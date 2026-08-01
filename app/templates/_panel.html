@@ -1,0 +1,102 @@
+<div class="panel-inner" data-token="{{ token.id }}"
+     data-lemma="{{ lemma.id if lemma else '' }}">
+  <p class="surface">{{ token.surface }}</p>
+  {% if lemma %}
+    <p class="lemma">{{ lemma.display }} <span class="upos">{{ lemma.upos }}</span></p>
+  {% endif %}
+  {% if token.feats %}
+    <p class="feats">{% for k, v in token.feats.items() %}<span>{{ k }}={{ v }}</span>{% endfor %}</p>
+  {% endif %}
+
+  {% if candidates|length > 1 %}
+    <section>
+      <h3>Lemme{% if token.ambiguity_margin < 0.15 and not token.is_resolved %} — à arbitrer{% endif %}</h3>
+      <ul class="candidates">
+        {% for c in candidates %}
+          <li class="{{ 'chosen' if c.chosen }}">
+            <button class="cand" data-lemma="{{ c.lemma.id }}">
+              <b>{{ c.lemma.lemma }}</b> <span class="upos">{{ c.lemma.upos }}</span>
+              <span class="score">{{ (c.score * 100)|round|int }}</span>
+            </button>
+          </li>
+        {% endfor %}
+      </ul>
+      <label class="scope small">
+        <input type="checkbox" class="scope-text"> limiter ce choix à ce texte
+      </label>
+    </section>
+  {% endif %}
+
+  <section>
+    <h3>Statut</h3>
+    <div class="statuses">
+      {% for s in [4, 3, 2, 1, 0] %}
+        <button class="st s{{ s }} {{ 'active' if status and status.status == s and not status.is_ignored }}"
+                data-status="{{ s }}">{{ s }}</button>
+      {% endfor %}
+      <button class="st ign {{ 'active' if status and status.is_ignored }}" data-ignore="1">ignorer</button>
+    </div>
+    {% if status and status.is_locked %}
+      <p class="muted small">Statut verrouillé manuellement.
+        <button class="link" data-unlock="1">déverrouiller</button></p>
+    {% endif %}
+  </section>
+
+  <section>
+    <h3>Traduction</h3>
+    <textarea class="gloss" rows="2" placeholder="glose française"
+              data-suggested="{{ '1' if suggested_gloss and not (status and status.gloss) else '' }}"
+      >{{ (status.gloss if status and status.gloss else suggested_gloss) or '' }}</textarea>
+    {% if suggested_gloss and not (status and status.gloss) %}
+      <p class="muted small">Proposition du dictionnaire — modifiez-la puis enregistrez.</p>
+    {% endif %}
+    <div class="row-buttons">
+      <button class="save-gloss">Enregistrer</button>
+      {% if llm %}<button class="suggest">Proposer</button>{% endif %}
+    </div>
+    {% if entries and show_dictionary %}
+      <ul class="dict">
+        {% for e in entries %}
+          <li><b>{{ e.headword }}</b> — {{ e.body }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+  </section>
+
+  <section>
+    <h3>Image</h3>
+    <div class="panel-image">
+      {% if status and status.image_path %}
+        <img src="/media/{{ status.image_path }}" alt="{{ status.image_alt or '' }}">
+        <button class="link danger p-img-del">retirer l'image</button>
+      {% else %}
+        <div class="dropzone p-dropzone">
+          <p class="muted small">Glissez une image,<br>ou collez-la avec <b>Cmd+V</b></p>
+          <label class="link">choisir un fichier
+            <input type="file" class="p-img-file" accept="image/*" hidden></label>
+        </div>
+      {% endif %}
+    </div>
+  </section>
+
+  <section>
+    <h3>Fiches</h3>
+    <label class="chk"><input type="checkbox" class="kind" value="la_fr"
+      {{ 'checked' if 'la_fr' not in cards }} {{ 'disabled' if 'la_fr' in cards }}> latin → français</label>
+    <label class="chk"><input type="checkbox" class="kind" value="fr_la"
+      {{ 'disabled' if 'fr_la' in cards }}> français → latin</label>
+    <label class="chk"><input type="checkbox" class="kind" value="cloze"
+      {{ 'disabled' if 'cloze' in cards }}> texte à trous</label>
+    <button class="create-cards">Créer</button>
+    {% if cards %}<p class="muted small">Déjà présentes : {{ cards|join(', ') }}</p>{% endif %}
+  </section>
+
+  {% if forms %}
+    <section>
+      <h3>Formes rencontrées ({{ forms|length }})</h3>
+      <p class="forms">{% for f, n in forms %}<span>{{ f }} <i>{{ n }}</i></span>{% endfor %}</p>
+    </section>
+  {% endif %}
+
+  <p class="context" hidden>{{ sentence }}</p>
+</div>

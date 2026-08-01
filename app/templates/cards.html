@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Fiches{% endblock %}
+{% block content %}
+<section class="stack">
+  <div class="summary">
+    <div class="metric"><span class="label">Total</span><span class="value">{{ stats.total }}</span></div>
+    <div class="metric"><span class="label">Dues</span><span class="value">{{ stats.due }}</span></div>
+    <div class="metric"><span class="label">Nouvelles</span><span class="value">{{ stats.new }}</span></div>
+  </div>
+  <p><a href="/export/anki.csv">Export CSV pour Anki</a> · <a href="/export/lemmas.csv">Export du lexique</a></p>
+
+  {% if not cards %}
+    <p class="muted">Aucune fiche. Créez-en depuis le panneau latéral d'un texte.</p>
+  {% endif %}
+
+  <ul class="cardlist">
+    {% for c in cards %}
+      <li class="card-row" data-card="{{ c.id }}">
+        <div class="card-head">
+          <b>{{ lemmas[c.lemma_id].display if c.lemma_id in lemmas else '' }}</b>
+          <span class="badge">{{ kind_labels[c.kind] }}</span>
+          {% if c.extra and c.extra.get('is_custom') %}<span class="badge">modifiée</span>{% endif %}
+          {% if c.is_suspended %}<span class="badge">suspendue</span>{% endif %}
+          <span class="muted small right">
+            {{ c.interval_days }} j · échéance {{ c.due_at.strftime('%Y-%m-%d') }}
+          </span>
+        </div>
+
+        <div class="card-fields">
+          <label>Recto
+            <textarea class="c-front" rows="2">{{ c.front }}</textarea>
+          </label>
+          <label>Verso
+            <textarea class="c-back" rows="2">{{ c.back }}</textarea>
+          </label>
+        </div>
+
+        <div class="row-buttons">
+          <button class="c-save">Enregistrer</button>
+          <label class="chk small"><input type="checkbox" class="c-reset"> remettre la programmation à zéro</label>
+          <button class="link c-suspend">{{ 'réactiver' if c.is_suspended else 'suspendre' }}</button>
+          <button class="link danger c-delete">supprimer</button>
+          <span class="c-feedback muted small"></span>
+        </div>
+      </li>
+    {% endfor %}
+  </ul>
+</section>
+<script src="/static/cards.js?v={{ asset_version }}"></script>
+{% endblock %}

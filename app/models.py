@@ -1,0 +1,310 @@
+"""Schema de donnees.
+
+Point central : le statut de connaissance est porte par le LEMME
+(`LemmaStatus.lemma_id`), jamais par la forme flechie. C'est ce qui
+distingue cette application de Learning with Texts.
+
+`Lemma.homonym_idx` est indispensable : sans lui, edo « manger » et
+edo « publier » partageraient un statut.
+"""
+
+from __future__ import annotations
+
+import datetime as dt
+from typing import Any
+
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    TypeDecorator,
+    UniqueConstraint,
+)
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+
+def utcnow() -> dt.datetime:
+    return dt.datetime.now(dt.timezone.utc)
+
+
+class UtcDateTime(TypeDecorator):
+    """DateTime toujours conscient du fuseau, meme sur SQLite.
+
+    SQLite ne stocke pas le decalage horaire : sans ce decorateur, les
+    dates ressortent « naives » et toute comparaison avec un datetime
+    conscient leve TypeError. On normalise donc en UTC a l'ecriture et on
+    re-attache UTC a la lecture.
+    """
+
+    impl = DateTime
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            return value.replace(tzinfo=dt.timezone.utc)
+        return value.astimezone(dt.timezone.utc)
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            return value.replace(tzinfo=dt.timezone.utc)
+        return value.astimezone(dt.timezone.utc)
+
+
+class Base(DeclarativeBase):
+    type_annotation_map = {dict[str, Any]: JSON, list[Any]: JSON}
+
+
+# --------------------------------------------------------------------------
+# Lexique
+# --------------------------------------------------------------------------
+class Lemma(Base):
+    __tablename__ = "lemma"
+    __table_args__ = (
+        UniqueConstraint("lemma", "upos", "homonym_idx", name="uq_lemma"),
+        Index("ix_lemma_lemma", "lemma"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    lemma: Mapped[str] = mapped_column(String(80))
+    upos: Mapped[str] = mapped_column(String(12))
+    homonym_idx: Mapped[int] = mapped_column(Integer, default=0)
+    headword: Mapped[str | None] = mapped_column(String(160), default=None)
+    lemma_meta: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+    status: Mapped["LemmaStatus | None"] = relationship(
+        back_populates="lemma_obj", uselist=False, cascade="all, delete-orphan"
+    )
+
+    @property
+    def display(self) -> str:
+        return self.headword or self.lemma
+
+
+class Form(Base):
+    __tablename__ = "form"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    form_key: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+
+
+class FormLemma(Base):
+    """Formes observees rattachees a un lemme. Alimente les statistiques
+    et l'affichage « toutes les formes rencontrees de ce lemme »."""
+
+    __tablename__ = "form_lemma"
+    __table_args__ = (UniqueConstraint("form_id", "lemma_id", name="uq_form_lemma"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    form_id: Mapped[int] = mapped_column(ForeignKey("form.id", ondelete="CASCADE"))
+    lemma_id: Mapped[int] = mapped_column(ForeignKey("lemma.id", ondelete="CASCADE"))
+    feats: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    freq: Mapped[int] = mapped_column(Integer, default=0)
+
+
+# --------------------------------------------------------------------------
+# Textes
+# --------------------------------------------------------------------------
+class TextDoc(Base):
+    __tablename__ = "text"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    title: Mapped[str] = mapped_column(String(240))
+    author: Mapped[str | None] = mapped_column(String(160), default=None)
+    source_note: Mapped[str | None] = mapped_column(Text, default=None)
+    raw_content: Mapped[str] = mapped_column(Text)
+    language_stage: Mapped[str] = mapped_column(String(24), default="classical")
+    status: Mapped[str] = mapped_column(String(16), default="pending")
+    engine: Mapped[str | None] = mapped_column(String(40), default=None)
+    engine_version: Mapped[str | None] = mapped_column(String(60), default=None)
+    token_count: Mapped[int] = mapped_column(Integer, default=0)
+    word_count: Mapped[int] = mapped_column(Integer, default=0)
+    page_count: Mapped[int] = mapped_column(Integer, default=1)
+    error_message: Mapped[str | None] = mapped_column(Text, default=None)
+    created_at: Mapped[dt.datetime] = mapped_column(UtcDateTime, default=utcnow)
+
+    tokens: Mapped[list["TextToken"]] = relationship(
+        back_populates="text", cascade="all, delete-orphan", order_by="TextToken.idx"
+    )
+
+
+class TextToken(Base):
+    __tablename__ = "text_token"
+    __table_args__ = (
+        UniqueConstraint("text_id", "idx", name="uq_token_idx"),
+        Index("ix_token_page", "text_id", "page_idx", "idx"),
+        Index("ix_token_lemma", "chosen_lemma_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    text_id: Mapped[int] = mapped_column(ForeignKey("text.id", ondelete="CASCADE"))
+    idx: Mapped[int] = mapped_column(Integer)
+    sentence_idx: Mapped[int] = mapped_column(Integer, default=0)
+    page_idx: Mapped[int] = mapped_column(Integer, default=0)
+    surface: Mapped[str] = mapped_column(String(120))
+    char_start: Mapped[int] = mapped_column(Integer)
+    char_end: Mapped[int] = mapped_column(Integer)
+    trailing: Mapped[str] = mapped_column(String(40), default=" ")
+    is_word: Mapped[bool] = mapped_column(Boolean, default=True)
+    form_id: Mapped[int | None] = mapped_column(ForeignKey("form.id"), default=None)
+    chosen_lemma_id: Mapped[int | None] = mapped_column(
+        ForeignKey("lemma.id"), default=None
+    )
+    feats: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    candidates: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    ambiguity_margin: Mapped[float] = mapped_column(Float, default=1.0)
+    is_guessed: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_resolved: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    text: Mapped[TextDoc] = relationship(back_populates="tokens")
+    lemma: Mapped[Lemma | None] = relationship()
+
+
+# --------------------------------------------------------------------------
+# Connaissance
+# --------------------------------------------------------------------------
+class LemmaStatus(Base):
+    """4 inconnu … 0 maitrise. Une seule ligne par lemme.
+
+    L'absence de ligne signifie « jamais rencontre », etat distinct de 4.
+    """
+
+    __tablename__ = "lemma_status"
+    __table_args__ = (CheckConstraint("status BETWEEN 0 AND 4", name="ck_status_range"),)
+
+    lemma_id: Mapped[int] = mapped_column(
+        ForeignKey("lemma.id", ondelete="CASCADE"), primary_key=True
+    )
+    status: Mapped[int] = mapped_column(Integer, default=4)
+    is_ignored: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_locked: Mapped[bool] = mapped_column(Boolean, default=False)
+    gloss: Mapped[str | None] = mapped_column(Text, default=None)
+    note: Mapped[str | None] = mapped_column(Text, default=None)
+    image_path: Mapped[str | None] = mapped_column(String(240), default=None)
+    image_alt: Mapped[str | None] = mapped_column(String(240), default=None)
+    first_seen: Mapped[dt.datetime] = mapped_column(UtcDateTime, default=utcnow)
+    updated_at: Mapped[dt.datetime] = mapped_column(UtcDateTime, default=utcnow)
+
+    lemma_obj: Mapped[Lemma] = relationship(back_populates="status")
+
+
+class DisambiguationOverride(Base):
+    """Decision d'arbitrage memorisee et propagee."""
+
+    __tablename__ = "disambiguation_override"
+    __table_args__ = (
+        UniqueConstraint("form_id", "scope", "text_id", name="uq_override"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    form_id: Mapped[int] = mapped_column(ForeignKey("form.id", ondelete="CASCADE"))
+    lemma_id: Mapped[int] = mapped_column(ForeignKey("lemma.id", ondelete="CASCADE"))
+    scope: Mapped[str] = mapped_column(String(8), default="global")  # global | text
+    text_id: Mapped[int | None] = mapped_column(
+        ForeignKey("text.id", ondelete="CASCADE"), default=None
+    )
+    feats: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[dt.datetime] = mapped_column(UtcDateTime, default=utcnow)
+
+
+class MorphSkill(Base):
+    """Maitrise morphologique, axe independant du statut lexical.
+
+    Alimente par les fiches a trous ; ne colore jamais le texte.
+    """
+
+    __tablename__ = "morph_skill"
+
+    feature_key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    successes: Mapped[int] = mapped_column(Integer, default=0)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    updated_at: Mapped[dt.datetime] = mapped_column(UtcDateTime, default=utcnow)
+
+    @property
+    def accuracy(self) -> float:
+        return self.successes / self.attempts if self.attempts else 0.0
+
+
+# --------------------------------------------------------------------------
+# Fiches
+# --------------------------------------------------------------------------
+class Card(Base):
+    __tablename__ = "card"
+    __table_args__ = (
+        UniqueConstraint("lemma_id", "kind", name="uq_card_lemma_kind"),
+        Index("ix_card_due", "is_suspended", "due_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    lemma_id: Mapped[int] = mapped_column(ForeignKey("lemma.id", ondelete="CASCADE"))
+    kind: Mapped[str] = mapped_column(String(8))  # la_fr | fr_la | cloze
+    front: Mapped[str] = mapped_column(Text)
+    back: Mapped[str] = mapped_column(Text)
+    extra: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    is_suspended: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    ease_factor: Mapped[float] = mapped_column(Float, default=2.5)
+    interval_days: Mapped[int] = mapped_column(Integer, default=0)
+    repetitions: Mapped[int] = mapped_column(Integer, default=0)
+    lapses: Mapped[int] = mapped_column(Integer, default=0)
+    due_at: Mapped[dt.datetime] = mapped_column(UtcDateTime, default=utcnow)
+    created_at: Mapped[dt.datetime] = mapped_column(UtcDateTime, default=utcnow)
+
+    lemma: Mapped[Lemma] = relationship()
+    contexts: Mapped[list["CardContext"]] = relationship(
+        back_populates="card", cascade="all, delete-orphan"
+    )
+
+    @property
+    def is_new(self) -> bool:
+        return self.repetitions == 0 and self.lapses == 0
+
+
+class CardContext(Base):
+    __tablename__ = "card_context"
+    __table_args__ = (UniqueConstraint("card_id", "token_id", name="uq_card_context"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    card_id: Mapped[int] = mapped_column(ForeignKey("card.id", ondelete="CASCADE"))
+    token_id: Mapped[int] = mapped_column(ForeignKey("text_token.id", ondelete="CASCADE"))
+    sentence: Mapped[str] = mapped_column(Text)
+    surface: Mapped[str] = mapped_column(String(120))
+    added_at: Mapped[dt.datetime] = mapped_column(UtcDateTime, default=utcnow)
+
+    card: Mapped[Card] = relationship(back_populates="contexts")
+
+
+class ReviewLog(Base):
+    """Journal complet des revisions.
+
+    Conserve integralement pour permettre, le cas echeant, de rejouer
+    l'historique sous un autre ordonnanceur (FSRS) sans perte.
+    """
+
+    __tablename__ = "review_log"
+    __table_args__ = (Index("ix_review_card", "card_id", "reviewed_at"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    card_id: Mapped[int] = mapped_column(ForeignKey("card.id", ondelete="CASCADE"))
+    reviewed_at: Mapped[dt.datetime] = mapped_column(UtcDateTime, default=utcnow)
+    quality: Mapped[int] = mapped_column(Integer)
+    elapsed_ms: Mapped[int | None] = mapped_column(Integer, default=None)
+    prev_interval: Mapped[int] = mapped_column(Integer, default=0)
+    new_interval: Mapped[int] = mapped_column(Integer, default=0)
+    prev_ef: Mapped[float] = mapped_column(Float, default=2.5)
+    new_ef: Mapped[float] = mapped_column(Float, default=2.5)
+
+
+class Setting(Base):
+    __tablename__ = "setting"
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str] = mapped_column(Text)

@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}Réviser{% endblock %}
+{% block content %}
+<section class="review" x-data='reviewer({{ queue|tojson }})' @keydown.window="onKey($event)">
+  <template x-if="!current">
+    <div class="done">
+      <h1>Rien à réviser</h1>
+      <p class="muted">{{ stats.total }} fiches au total. Revenez quand des révisions seront dues,
+        ou créez des fiches depuis un texte.</p>
+    </div>
+  </template>
+
+  <template x-if="current">
+    <div class="card-view">
+      <p class="muted small">
+        <span x-text="remaining"></span> restantes ·
+        <span x-text="current.kind_label"></span>
+        <template x-if="current.is_new"><span class="badge">nouvelle</span></template>
+      </p>
+
+      <div class="face front">
+        <template x-if="current.image && current.image_side === 'front'">
+          <img class="card-image" :src="current.image" alt="">
+        </template>
+        <div x-text="current.front"></div>
+      </div>
+
+      <template x-if="shown">
+        <div>
+          <div class="face back">
+            <template x-if="current.image && current.image_side === 'back'">
+              <img class="card-image" :src="current.image" alt="">
+            </template>
+            <div x-text="current.back"></div>
+          </div>
+          <template x-if="current.lemma && current.kind !== 'la_fr'">
+            <p class="muted small">lemme : <span x-text="current.lemma"></span></p>
+          </template>
+          <template x-if="Object.keys(current.feats || {}).length">
+            <p class="feats">
+              <template x-for="[k, v] in Object.entries(current.feats)">
+                <span x-text="k + '=' + v"></span>
+              </template>
+            </p>
+          </template>
+        </div>
+      </template>
+
+      <template x-if="!shown">
+        <button class="reveal" @click="shown = true">Afficher la réponse <small>espace</small></button>
+      </template>
+
+      <template x-if="shown">
+        <div class="grades">
+          <button class="grade again" @click="grade('again')">À revoir <small>1</small></button>
+          <button class="grade hard" @click="grade('hard')">Difficile <small>2</small></button>
+          <button class="grade good" @click="grade('good')">Correct <small>3</small></button>
+          <button class="grade easy" @click="grade('easy')">Facile <small>4</small></button>
+        </div>
+      </template>
+
+      <p class="muted small" x-text="lastMessage"></p>
+    </div>
+  </template>
+</section>
+
+<script>
+function reviewer(queue) {
+  return {
+    queue: queue,
+    shown: false,
+    startedAt: Date.now(),
+    lastMessage: '',
+    get current() { return this.queue.length ? this.queue[0] : null; },
+    get remaining() { return this.queue.length; },
+
+    async grade(button) {
+      const card = this.current;
+      if (!card) return;
+      const body = new FormData();
+      body.append('card_id', card.id);
+      body.append('button', button);
+      body.append('elapsed_ms', Date.now() - this.startedAt);
+      const res = await fetch('/api/reviews', { method: 'POST', body });
+      if (!res.ok) { this.lastMessage = 'Échec de l’enregistrement.'; return; }
+      const out = await res.json();
+
+      this.queue.shift();
+      // Une fiche ratée revient en fin de session, sans toucher à sa date.
+      if (out.is_lapse) this.queue.push(card);
+
+      let msg = out.is_lapse
+        ? 'Reprogrammée dans la session.'
+        : `Revue dans ${out.interval_days} jour(s).`;
+      if (out.lemma_status !== null && out.lemma_status !== undefined) {
+        msg += ` Statut du lemme : ${out.lemma_status}.`;
+      }
+      this.lastMessage = msg;
+      this.shown = false;
+      this.startedAt = Date.now();
+    },
+
+    onKey(e) {
+      if (e.key === ' ') { e.preventDefault(); if (!this.shown) this.shown = true; return; }
+      if (!this.shown) return;
+      const map = { '1': 'again', '2': 'hard', '3': 'good', '4': 'easy' };
+      if (map[e.key]) { e.preventDefault(); this.grade(map[e.key]); }
+    },
+  };
+}
+</script>
+{% endblock %}

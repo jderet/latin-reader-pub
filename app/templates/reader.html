@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block title %}{{ doc.title }}{% endblock %}
+{% block content %}
+<style>
+  main { max-width: 1560px; }
+  .text-body {
+    font-family: {{ prefs.font_stack }};
+    font-size: {{ prefs.font_size }}%;
+    line-height: {{ prefs.line_height }}%;
+    max-width: {{ prefs.text_width }}px;
+    {% if prefs.justify %}text-align: justify;{% endif %}
+  }
+  .text-stage {
+    --gutter: {{ prefs.image_columns * (prefs.image_size + 10) + 16 }}px;
+    --zoom: {% if prefs.image_zoom %}{{ ([prefs.image_zoom_size, prefs.image_columns * (prefs.image_size + 10)]|min / prefs.image_size)|round(2) }}{% else %}1{% endif %};
+  }
+  .margin-image { width: {{ prefs.image_size }}px; }
+  {% if not prefs.image_captions %}.margin-image figcaption { display: none; }{% endif %}
+  {% if not prefs.show_colors %}
+  .text-body .w.s1, .text-body .w.s2, .text-body .w.s3, .text-body .w.s4 { background: none; }
+  {% endif %}
+  {% if not prefs.show_unseen_blue %}
+  .text-body .w.unseen { background: none; border-bottom: 1px dotted var(--muted); }
+  {% endif %}
+  {% if not prefs.show_ambiguous %}.text-body .w.ambiguous { box-shadow: none; }{% endif %}
+  {% if prefs.color_intensity < 100 %}
+  .text-body .w.s1, .text-body .w.s2, .text-body .w.s3, .text-body .w.s4, .text-body .w.unseen {
+    filter: saturate({{ prefs.color_intensity }}%);
+  }
+  {% endif %}
+</style>
+<script>
+  window.READER_DATA = {
+    textId: {{ doc.id }},
+    page: {{ page }},
+    unseenCount: {{ unseen_count }},
+    images: {{ image_targets|tojson }},
+    prefs: {{ prefs|tojson }}
+  };
+</script>
+<div class="reader" x-data="reader()" x-init="root = $el; init()"
+     @keydown.window="onKey($event)">
+  <div class="reader-main">
+    <div class="reader-head">
+      <h1>{{ doc.title }}</h1>
+      <p class="muted small">
+        {% if doc.author %}{{ doc.author }} · {% endif %}
+        {{ doc.word_count }} mots ·
+        {% if coverage %}{{ (coverage.known_ratio * 100)|round(1) }} % connus ·{% endif %}
+        {{ pending }} ambiguïtés signalées ·
+        moteur {{ doc.engine }} {{ doc.engine_version }}
+      </p>
+      {% if doc.status != 'ready' %}
+        <p class="notice" x-init="pollStatus()">
+          Lemmatisation en cours ({{ doc.status }})… la page se rafraîchira.
+        </p>
+      {% endif %}
+    </div>
+
+    <p class="legend">
+      <span class="w unseen">jamais vu</span><span class="w s4">4 inconnu</span>
+      <span class="w s3">3</span><span class="w s2">2</span>
+      <span class="w s1">1</span><span class="w s0">0 maîtrisé</span>
+      <span class="w ambiguous">ambigu</span>
+    </p>
+
+    <div class="text-stage" x-ref="stage" :class="layoutMode">
+      <div class="margin-layer">
+        <template x-for="img in placed" :key="img.token_id">
+          <figure class="margin-image" :class="[img.side, focusedLemma == img.lemma_id ? 'active' : '']"
+                  :data-for="img.token_id" :data-lemma="img.lemma_id"
+                  :style="`top:${img.top}px; ${img.side}:${img.offset}px`"
+                  @click="open(img.token_id)">
+            <img :src="img.url" :alt="img.alt" loading="lazy">
+            <figcaption>
+              <b x-text="img.lemma"></b>
+              <span class="cap-gloss" x-show="img.gloss" x-text="img.gloss"></span>
+            </figcaption>
+          </figure>
+        </template>
+      </div>
+
+      <div class="text-body" x-ref="body">
+        {%- for item in tokens -%}
+          {%- if item.t.is_word -%}
+            <span class="w{% if item.status is not none %} s{{ item.status }}{% elif item.unseen %} unseen{% endif %}{% if item.ignored %} ignored{% endif %}{% if item.ambiguous %} ambiguous{% endif %}"
+                  data-token="{{ item.t.id }}"
+                  data-lemma="{{ item.t.chosen_lemma_id or '' }}"
+                  @click="open({{ item.t.id }})"
+                  title="{{ item.lemma.display if item.lemma else '' }}">{{ item.t.surface }}</span>
+          {%- else -%}
+            <span class="punct">{{ item.t.surface }}</span>
+          {%- endif -%}
+          {{- item.t.trailing -}}
+        {%- endfor -%}
+      </div>
+    </div>
+
+    {% if prefs.show_validate_bar %}
+    <div class="validate-bar" x-show="unseenCount > 0" x-cloak>
+      <p class="muted small">
+        <b x-text="unseenCount"></b> mot(s) jamais rencontré(s) sur cette page, affichés en bleu.
+      </p>
+      <button class="validate" @click="validateUnseen()" :disabled="validating">
+        <span x-show="!validating">Je connais déjà tous les mots bleus de cette page</span>
+        <span x-show="validating" x-cloak>Validation…</span>
+      </button>
+      <p class="muted small">Ils passeront au statut 0 (maîtrisé). Les noms propres sont exclus.</p>
+    </div>
+    {% endif %}
+
+    {% if doc.page_count > 1 %}
+      <nav class="pager">
+        {% for p in range(doc.page_count) %}
+          <a href="?page={{ p }}" class="{{ 'current' if p == page }}">{{ p + 1 }}</a>
+        {% endfor %}
+      </nav>
+    {% endif %}
+  </div>
+
+  <aside class="panel" :class="{ open: panel }">
+    <button class="close" @click="panel = false" aria-label="Fermer">×</button>
+    <div x-html="panelHtml"></div>
+    <p class="muted small kbd">
+      Raccourcis : <b>4 3 2 1 0</b> statut · <b>i</b> ignorer · <b>f</b> créer une fiche · <b>Échap</b> fermer
+    </p>
+  </aside>
+</div>
+<script src="/static/reader.js?v={{ asset_version }}"></script>
+{% endblock %}

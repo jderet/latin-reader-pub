@@ -1,0 +1,31 @@
+# Image complete, avec les moteurs contextuels.
+# Construction longue (PyTorch + modeles) : compter 10 a 20 minutes et
+# environ 4 Go. A n'utiliser que si vous voulez Stanza ou CLTK.
+FROM python:3.12-slim
+
+ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1
+WORKDIR /srv
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      build-essential curl && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir \
+      "fastapi>=0.115" "uvicorn[standard]>=0.30" "sqlalchemy>=2.0" \
+      "jinja2>=3.1" "python-multipart>=0.0.9" \
+      torch --index-url https://download.pytorch.org/whl/cpu \
+ && pip install --no-cache-dir "stanza>=1.8"
+
+# Les modeles sont telecharges a la CONSTRUCTION, pas au demarrage :
+# un conteneur qui telecharge 400 Mo a chaque lancement est inutilisable.
+ARG STANZA_PACKAGE=ittb
+RUN python -c "import stanza; stanza.download('la', package='${STANZA_PACKAGE}')"
+
+COPY app ./app
+COPY data ./data
+COPY scripts ./scripts
+
+ENV DATA_DIR=/srv/var LEMMATIZER_ORDER=stanza,cltk,lexicon STANZA_PACKAGE=${STANZA_PACKAGE}
+RUN mkdir -p /srv/var
+
+EXPOSE 8000
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

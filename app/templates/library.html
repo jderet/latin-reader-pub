@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="stack">
+  <div class="summary">
+    <div class="metric"><span class="label">Fiches dues</span><span class="value">{{ queue.due }}</span></div>
+    <div class="metric"><span class="label">Dont nouvelles</span><span class="value">{{ queue.new }}</span></div>
+    <div class="metric"><span class="label">Lemmes suivis</span><span class="value">{{ progress.total_tracked }}</span></div>
+  </div>
+
+  <details class="importer" {% if not rows %}open{% endif %}>
+    <summary>Ajouter un texte</summary>
+    <form method="post" action="/texts" class="form">
+      <div class="row">
+        <label>Titre <input name="title" placeholder="De bello Gallico I, 1"></label>
+        <label>Auteur <input name="author" placeholder="César"></label>
+        <label>État de langue
+          <select name="language_stage">
+            <option value="classical">classique</option>
+            <option value="late">tardif</option>
+            <option value="medieval">médiéval</option>
+            <option value="neolatin">néo-latin</option>
+          </select>
+        </label>
+      </div>
+      <label>Texte latin
+        <textarea name="content" rows="8" required placeholder="Gallia est omnis divisa in partes tres…"></textarea>
+      </label>
+      <button type="submit">Importer et lemmatiser</button>
+    </form>
+  </details>
+
+  <h2>Textes</h2>
+  {% if not rows %}
+    <p class="muted">Aucun texte pour le moment.</p>
+  {% endif %}
+  <ul class="texts">
+    {% for row in rows %}
+      <li>
+        <div class="text-head">
+          <a class="text-title" href="/texts/{{ row.doc.id }}">{{ row.doc.title }}</a>
+          {% if row.doc.author %}<span class="muted">{{ row.doc.author }}</span>{% endif %}
+          <span class="badge badge-{{ row.doc.status }}">{{ row.doc.status }}</span>
+        </div>
+        {% if row.coverage %}
+          <div class="bar" title="part des occurrences connues">
+            <span style="width: {{ (row.coverage.known_ratio * 100)|round(1) }}%"></span>
+          </div>
+          <p class="muted small">
+            {{ row.coverage.total_words }} mots · {{ row.coverage.distinct_lemmas }} lemmes distincts ·
+            {{ (row.coverage.known_ratio * 100)|round(1) }} % connus ·
+            moteur {{ row.doc.engine }} {{ row.doc.engine_version }}
+          </p>
+        {% elif row.doc.status == 'failed' %}
+          <p class="error small">{{ row.doc.error_message }}</p>
+        {% endif %}
+        <div class="actions small">
+          <a href="/export/texts/{{ row.doc.id }}.conllu">CoNLL-U</a>
+          <form method="post" action="/texts/{{ row.doc.id }}/relemmatize" class="inline">
+            <select name="engine">
+              <option value="">moteur par défaut</option>
+              {% for e in engines %}<option value="{{ e.name }}">{{ e.name }}</option>{% endfor %}
+            </select>
+            <button type="submit" class="link">relemmatiser</button>
+          </form>
+          <form method="post" action="/texts/{{ row.doc.id }}/delete" class="inline"
+                onsubmit="return confirm('Supprimer ce texte ?')">
+            <button type="submit" class="link danger">supprimer</button>
+          </form>
+        </div>
+      </li>
+    {% endfor %}
+  </ul>
+
+  <p class="muted small">
+    Moteurs : {% for e in engines %}{{ e.name }} ({{ e.status }}){% if not loop.last %} · {% endif %}{% endfor %}
+  </p>
+</section>
+{% endblock %}

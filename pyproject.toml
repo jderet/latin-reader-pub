@@ -1,0 +1,23 @@
+[project]
+name = "latin-reader"
+version = "0.1.0"
+description = "Lecture annotee de textes latins avec statut par lemme et repetition espacee"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.30",
+  "sqlalchemy>=2.0",
+  "jinja2>=3.1",
+  "python-multipart>=0.0.9",
+]
+
+[project.optional-dependencies]
+stanza = ["stanza>=1.8"]
+cltk = ["cltk>=1.3"]
+dev = ["pytest>=8", "httpx>=0.27", "ruff>=0.6"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100

@@ -1,0 +1,16 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: ${DOCKERFILE:-Dockerfile}
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - ./var:/srv/var
+      - ./data:/srv/data:ro
+    environment:
+      DATA_DIR: /srv/var
+      LEMMATIZER_ORDER: ${LEMMATIZER_ORDER:-stanza,cltk,lexicon}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      LOG_LEVEL: INFO
+    restart: unless-stopped

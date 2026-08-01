@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Statistiques{% endblock %}
+{% block content %}
+<section class="stack">
+  <h1>Progression</h1>
+  <table class="grid">
+    <thead><tr><th>Statut</th><th>Lemmes</th></tr></thead>
+    <tbody>
+      {% for label, count in progress.by_status.items() %}
+        <tr><td>{{ label }}</td><td>{{ count }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <h2>Points morphologiques les plus faibles</h2>
+  {% if weakest %}
+    <table class="grid">
+      <thead><tr><th>Trait</th><th>Réussite</th><th>Tentatives</th></tr></thead>
+      <tbody>
+        {% for w in weakest %}
+          <tr><td><code>{{ w.feature }}</code></td><td>{{ (w.accuracy * 100)|round|int }} %</td><td>{{ w.attempts }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <p class="muted small">Alimenté par les fiches à trous. Cet axe est indépendant du statut lexical :
+      connaître un lemme ne garantit pas de reconnaître toutes ses formes.</p>
+  {% else %}
+    <p class="muted">Pas encore assez de révisions de fiches à trous.</p>
+  {% endif %}
+
+  <h2>Moteurs de lemmatisation</h2>
+  <ul class="muted small">
+    {% for e in engines %}<li>{{ e.name }} {{ e.version }} — {{ e.status }}</li>{% endfor %}
+  </ul>
+</section>
+{% endblock %}

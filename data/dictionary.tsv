@@ -1,0 +1,104 @@
+# cle_lemme	vedette	glose
+# Noyau de vocabulaire francais. Format : cle_lemme <TAB> vedette <TAB> glose.
+# Pour etoffer : verser ici un import de Whitaker's Words (domaine public)
+# ou de Lewis & Short (CC BY-SA) au meme format.
+sum	sum, esse, fui	être, exister
+edo	edo, edere, edi, esum	manger
+gallia	Gallia, ae, f.	la Gaule
+gallus	Gallus, i, m.	Gaulois
+belgae	Belgae, arum, m. pl.	les Belges
+aquitani	Aquitani, orum, m. pl.	les Aquitains
+aquitania	Aquitania, ae, f.	l'Aquitaine
+celtae	Celtae, arum, m. pl.	les Celtes
+germani	Germani, orum, m. pl.	les Germains
+heluetii	Helvetii, orum, m. pl.	les Helvètes
+sequani	Sequani, orum, m. pl.	les Séquanes
+garumna	Garumna, ae, m.	la Garonne
+matrona	Matrona, ae, m.	la Marne
+sequana	Sequana, ae, m.	la Seine
+rhenus	Rhenus, i, m.	le Rhin
+rhodanus	Rhodanus, i, m.	le Rhône
+oceanus	Oceanus, i, m.	l'Océan
+hispania	Hispania, ae, f.	l'Espagne
+pyrenaeus	Pyrenaeus, a, um	des Pyrénées
+omnis	omnis, e	tout, chaque
+diuido	divido, dividere, divisi, divisum	diviser, séparer
+pars	pars, partis, f.	partie, région
+tres	tres, tria	trois
+unus	unus, a, um	un seul, un
+incolo	incolo, incolere, incolui	habiter
+alius	alius, a, ud	autre
+tertius	tertius, a, um	troisième
+qui	qui, quae, quod	qui, lequel
+ipse	ipse, ipsa, ipsum	lui-même, en personne
+lingua	lingua, ae, f.	langue, parole
+noster	noster, nostra, nostrum	notre
+appello	appello, appellare, avi, atum	appeler, nommer
+hic	hic, haec, hoc	celui-ci, ce
+institutum	institutum, i, n.	institution, coutume
+lex	lex, legis, f.	loi
+inter	inter	entre, parmi
+sui	sui, sibi, se	soi, se
+differo	differo, differre, distuli, dilatum	différer, se distinguer
+ab	ab, a	de, depuis, par
+et	et	et
+fortis	fortis, e	fort, courageux
+propterea	propterea	pour cette raison
+cultus	cultus, us, m.	culture, civilisation, mode de vie
+atque	atque	et, et aussi
+humanitas	humanitas, humanitatis, f.	civilisation, culture, humanité
+prouincia	provincia, ae, f.	province
+longe	longe	loin, de loin
+absum	absum, abesse, afui	être éloigné, être absent
+minime	minime	très peu, nullement
+ad	ad	vers, auprès de
+is	is, ea, id	celui-ci, il
+mercator	mercator, mercatoris, m.	marchand
+saepe	saepe	souvent
+commeo	commeo, commeare, avi, atum	circuler, se rendre
+effemino	effemino, effeminare, avi, atum	efféminer, amollir
+animus	animus, i, m.	esprit, courage, âme
+pertineo	pertineo, pertinere, ui	s'étendre, concerner
+importo	importo, importare, avi, atum	importer, introduire
+proximus	proximus, a, um	le plus proche, voisin
+trans	trans	au-delà de
+continenter	continenter	continuellement, sans interruption
+bellum	bellum, i, n.	guerre
+gero	gero, gerere, gessi, gestum	porter, faire (la guerre)
+de	de	de, au sujet de
+causa	causa, ae, f.	cause, raison
+quoque	quoque	aussi
+reliquus	reliquus, a, um	restant, les autres
+uirtus	virtus, virtutis, f.	valeur, courage, vertu
+praecedo	praecedo, praecedere, cessi, cessum	devancer, surpasser
+fere	fere	presque, généralement
+cotidianus	cotidianus, a, um	quotidien, journalier
+proelium	proelium, i, n.	combat, bataille
+cum	cum	avec ; lorsque
+contendo	contendo, contendere, tendi, tentum	lutter, se battre, se hâter
+aut	aut	ou, ou bien
+suus	suus, a, um	son, sien
+finis	finis, is, m.	limite ; au pluriel, territoire
+prohibeo	prohibeo, prohibere, ui, itum	écarter, empêcher
+in	in	dans, sur, contre
+quam	quam	que, combien
+obtineo	obtineo, obtinere, ui, tentum	occuper, tenir
+dico	dico, dicere, dixi, dictum	dire
+initium	initium, i, n.	commencement, début
+capio	capio, capere, cepi, captum	prendre
+flumen	flumen, fluminis, n.	fleuve, cours d'eau
+contineo	contineo, continere, ui, tentum	contenir, être bordé
+attingo	attingo, attingere, attigi, attactum	toucher, atteindre
+etiam	etiam	aussi, même
+uergo	vergo, vergere	être orienté vers, incliner
+septentrio	septentrio, septentrionis, m.	le nord, le septentrion
+extremus	extremus, a, um	extrême, le plus éloigné
+orior	orior, oriri, ortus sum	naître, commencer, s'élever
+inferus	inferus, a, um	inférieur, plus bas
+specto	specto, spectare, avi, atum	regarder, être tourné vers
+oriens	oriens, orientis, m.	l'orient, le levant
+sol	sol, solis, m.	soleil
+mons	mons, montis, m.	montagne
+occasus	occasus, us, m.	coucher, occident
+quod	quod	parce que, le fait que
+una	una	ensemble

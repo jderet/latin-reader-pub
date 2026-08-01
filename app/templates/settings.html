@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Réglages{% endblock %}
+{% block content %}
+<section class="stack settings">
+  <h1>Réglages d'affichage</h1>
+  <p class="muted small">Les changements s'appliquent à toutes les pages dès l'enregistrement.</p>
+
+  <form method="post" action="/settings">
+    {% for group in groups %}
+      <fieldset>
+        <legend>{{ group }}</legend>
+        {% for opt in options if opt.group == group %}
+          <div class="setting">
+            {% if opt.kind == 'bool' %}
+              <label class="setting-line">
+                <input type="checkbox" name="{{ opt.key }}" {{ 'checked' if prefs[opt.key] }}>
+                <span>{{ opt.label }}</span>
+              </label>
+            {% elif opt.kind == 'int' %}
+              <label class="setting-line">
+                <span class="setting-label">{{ opt.label }}</span>
+                <input type="range" name="{{ opt.key }}" value="{{ prefs[opt.key] }}"
+                       min="{{ opt.minimum }}" max="{{ opt.maximum }}" step="{{ opt.step }}"
+                       oninput="this.nextElementSibling.textContent = this.value + '{{ opt.unit }}'">
+                <output>{{ prefs[opt.key] }}{{ opt.unit }}</output>
+              </label>
+            {% else %}
+              <label class="setting-line">
+                <span class="setting-label">{{ opt.label }}</span>
+                <select name="{{ opt.key }}">
+                  {% for value, label in opt.choices %}
+                    <option value="{{ value }}" {{ 'selected' if prefs[opt.key] == value }}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+            {% endif %}
+            {% if opt.help %}<p class="muted small setting-help">{{ opt.help }}</p>{% endif %}
+          </div>
+        {% endfor %}
+      </fieldset>
+    {% endfor %}
+
+    <div class="row-buttons">
+      <button type="submit">Enregistrer les réglages</button>
+    </div>
+  </form>
+
+  <section class="diagnostic">
+    <h2>Diagnostic</h2>
+    <p class="muted small">
+      Si une modification semble sans effet, vérifiez ici que les fichiers
+      servis sont bien les plus récents, puis rechargez avec <b>Cmd + Maj + R</b>.
+    </p>
+    <table class="grid">
+      <thead><tr><th>Fichier</th><th>Dernière modification</th></tr></thead>
+      <tbody>
+        {% for name, mtime in diagnostic.files %}
+          <tr><td><code>{{ name }}</code></td><td class="muted small">{{ mtime }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <p class="muted small">Empreinte globale : <code>{{ diagnostic.asset_version }}</code></p>
+    <p class="muted small">
+      Moteurs : {% for e in diagnostic.engines %}{{ e.name }} ({{ e.status }}){% if not loop.last %} · {% endif %}{% endfor %}
+    </p>
+  </section>
+
+  <form method="post" action="/settings/reset"
+        onsubmit="return confirm('Rétablir tous les réglages par défaut ?')">
+    <button class="link">rétablir les valeurs par défaut</button>
+  </form>
+</section>
+{% endblock %}

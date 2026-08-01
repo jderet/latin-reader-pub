@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}Mots{% endblock %}
+{% block content %}
+<section class="stack">
+  <h1>Mots</h1>
+
+  <form method="get" class="filters">
+    <input type="search" name="q" value="{{ q }}" placeholder="Chercher un mot ou une traduction">
+    <select name="status" onchange="this.form.submit()">
+      <option value="" {{ 'selected' if status == '' }}>tous les statuts</option>
+      {% for s in [4, 3, 2, 1, 0] %}
+        <option value="{{ s }}" {{ 'selected' if status == s|string }}>
+          {{ s }} — {{ status_labels[s] }} ({{ counts.by_status.get(s, 0) }})
+        </option>
+      {% endfor %}
+      <option value="ignored" {{ 'selected' if status == 'ignored' }}>ignorés ({{ counts.ignored }})</option>
+    </select>
+    <select name="image" onchange="this.form.submit()">
+      <option value="" {{ 'selected' if image == '' }}>avec ou sans image</option>
+      <option value="yes" {{ 'selected' if image == 'yes' }}>avec image</option>
+      <option value="no" {{ 'selected' if image == 'no' }}>sans image</option>
+    </select>
+    <button type="submit">Filtrer</button>
+    <a href="/words" class="link">réinitialiser</a>
+  </form>
+
+  <p class="muted small">
+    {{ rows|length }} mot(s). Cliquez sur une ligne pour la modifier.
+  </p>
+
+  {% if not rows %}
+    <p class="muted">Aucun mot ne correspond. Les mots apparaissent ici dès que vous leur donnez un statut.</p>
+  {% endif %}
+
+  <ul class="wordlist compact">
+    {% for row in rows %}
+      <li class="word-row" data-lemma="{{ row.lemma.id }}">
+        <div class="word-line">
+          <span class="chip s{{ row.status.status }}"
+                title="{{ status_labels[row.status.status] }}">{{ row.status.status }}</span>
+          <b class="word-lemma">{{ row.lemma.display }}</b>
+          <span class="word-gloss">{{ row.status.gloss or '—' }}</span>
+          {% if row.status.image_path %}
+            <img class="thumb" src="/media/{{ row.status.image_path }}" alt="">
+          {% endif %}
+          {% if row.status.note %}<span class="dot" title="{{ row.status.note }}">•</span>{% endif %}
+          {% if row.status.is_ignored %}<span class="badge">ignoré</span>{% endif %}
+          <span class="muted small count">{{ row.occurrences }}×</span>
+        </div>
+
+        <div class="word-edit" hidden>
+          <div class="word-fields">
+            <label>Traduction
+              <input class="w-gloss" value="{{ row.status.gloss or '' }}" placeholder="glose française">
+            </label>
+            <label>Note
+              <textarea class="w-note" rows="2" placeholder="remarque, construction, mnémotechnique">{{ row.status.note or '' }}</textarea>
+            </label>
+            <div class="statuses small">
+              {% for s in [4, 3, 2, 1, 0] %}
+                <button type="button" class="st s{{ s }} {{ 'active' if row.status.status == s and not row.status.is_ignored }}"
+                        data-status="{{ s }}">{{ s }}</button>
+              {% endfor %}
+              <button type="button" class="st ign {{ 'active' if row.status.is_ignored }}" data-ignore="1">ignorer</button>
+            </div>
+            <div class="row-buttons">
+              <button type="button" class="w-save">Enregistrer</button>
+              <button type="button" class="link danger w-forget">supprimer ce mot</button>
+              <span class="w-feedback muted small"></span>
+            </div>
+          </div>
+
+          <div class="word-image">
+            {% if row.status.image_path %}
+              <img src="/media/{{ row.status.image_path }}" alt="">
+              <button type="button" class="link danger w-img-del">retirer l'image</button>
+            {% else %}
+              <div class="dropzone">
+                <p class="muted small">Glissez une image,<br>ou collez avec <b>Cmd+V</b></p>
+                <label class="link">choisir un fichier
+                  <input type="file" class="w-img-file" accept="image/*" hidden></label>
+              </div>
+            {% endif %}
+          </div>
+
+          {% if row.forms %}
+            <p class="forms small">
+              Formes : {% for f, n in row.forms %}<span>{{ f }} <i>{{ n }}</i></span>{% endfor %}
+              {% if row.texts %}
+                · dans
+                {% for tid in row.texts %}<a href="/texts/{{ tid }}">texte {{ tid }}</a>{% if not loop.last %}, {% endif %}{% endfor %}
+              {% endif %}
+            </p>
+          {% endif %}
+        </div>
+      </li>
+    {% endfor %}
+  </ul>
+</section>
+<script src="/static/words.js?v={{ asset_version }}"></script>
+{% endblock %}
