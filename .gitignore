@@ -5,3 +5,4 @@ __pycache__/
 .venv/
 .env
 !data/demo/latin.db
+!data/demo/images/**
