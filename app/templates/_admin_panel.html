@@ -1,0 +1,108 @@
+<div class="panel-inner admin-panel" data-token="{{ token.id }}"
+     data-lemma="{{ lemma.id if lemma else '' }}">
+  <p class="surface">{{ token.surface }}</p>
+  {% if token.feats %}
+    <p class="feats">{% for k, v in token.feats.items() %}<span>{{ k }}={{ v }}</span>{% endfor %}</p>
+  {% endif %}
+
+  <section>
+    <h3>Lemme {% if token.is_resolved %}<span class="badge">tranché</span>{% endif %}</h3>
+    {% if candidates|length > 1 %}
+      <ul class="candidates admin-candidates">
+        {% for c in candidates %}
+          <li class="{{ 'chosen' if c.chosen }}" data-index="{{ loop.index0 }}">
+            <button class="cand" data-lemma="{{ c.lemma }}" data-upos="{{ c.upos }}">
+              <b>{{ c.lemma }}</b> <span class="upos">{{ c.upos }}</span>
+              {% if c.gloss %}<span class="cand-gloss">{{ c.gloss }}</span>{% endif %}
+              <span class="score">{{ (c.score * 100)|round|int }}</span>
+            </button>
+          </li>
+        {% endfor %}
+      </ul>
+      <p class="muted small">Ce choix ne vaut que pour cette occurrence.</p>
+    {% else %}
+      <p class="lemma">{{ lemma.display if lemma else '—' }}</p>
+      <p class="muted small">Un seul lemme proposé pour cette forme.</p>
+    {% endif %}
+
+    {# Les candidats viennent des corpus et des regles : une lecture rare
+       peut n'y figurer pas. « est » est presque toujours sum, mais reste
+       la 3e personne de edo. #}
+    <div class="free-lemma">
+      <input class="lemma-name" placeholder="imposer un autre lemme"
+             value="" autocomplete="off">
+      <select class="lemma-upos">
+        <option value="VERB">verbe</option>
+        <option value="NOUN">nom</option>
+        <option value="ADJ">adjectif</option>
+        <option value="PROPN">nom propre</option>
+        <option value="ADV">adverbe</option>
+        <option value="X">autre</option>
+      </select>
+      <button class="set-lemma">Appliquer</button>
+    </div>
+  </section>
+
+  <section>
+    <h3>Traduction partagée</h3>
+    <textarea class="shared-gloss" rows="2"
+              placeholder="visible par tous les lecteurs">{{ lemma.shared_gloss or '' if lemma }}</textarea>
+    <div class="row-buttons">
+      <button class="save-shared">Enregistrer</button>
+      <button class="link toggle-ignore">
+        {{ "ne plus ignorer" if lemma and lemma.is_ignored else "marquer nom propre" }}
+      </button>
+    </div>
+  </section>
+
+  <section>
+    <h3>Image</h3>
+    <div class="panel-image admin-image">
+      {% if lemma and lemma.image_path %}
+        <img src="/media/{{ lemma.image_path }}" alt="">
+        <button class="link danger img-del">retirer l'image</button>
+      {% else %}
+        <div class="dropzone">
+          <p class="muted small">Glissez une image,<br>ou collez avec <b>Cmd+V</b></p>
+          <label class="link">choisir un fichier
+            <input type="file" class="img-file" accept="image/*" hidden></label>
+        </div>
+      {% endif %}
+    </div>
+  </section>
+
+  <section>
+    <h3>Vocabulaire</h3>
+    {% if token.is_word %}
+      <p class="muted small">Ce token compte comme un mot.</p>
+      <button class="link toggle-word">l'écarter du vocabulaire</button>
+    {% else %}
+      <p class="muted small">
+        Écarté par le découpeur : il ne contient pas que des lettres.
+        Les lecteurs ne peuvent pas le cliquer.
+      </p>
+      <button class="link toggle-word">le compter comme un mot</button>
+    {% endif %}
+  </section>
+
+  <section>
+    <h3>Segmentation</h3>
+    {% if enclitic_child %}
+      <p class="muted small">
+        Enclitique détachée : <b>{{ enclitic_child.surface }}</b>
+      </p>
+    {% elif parent %}
+      <p class="muted small">Enclitique de <b>{{ parent.surface }}</b>.</p>
+      <button class="link merge-token">recoller au mot précédent</button>
+    {% elif splittable %}
+      <button class="link split-token">détacher « -{{ splittable }} »</button>
+    {% else %}
+      <p class="muted small">Rien à détacher dans ce mot.</p>
+    {% endif %}
+  </section>
+
+  <section>
+    <h3>Contexte</h3>
+    <p class="context">{{ sentence }}</p>
+  </section>
+</div>

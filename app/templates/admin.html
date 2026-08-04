@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% block title %}Administration{% endblock %}
+{% block content %}
+<section class="stack">
+  <h1>Tableau de bord</h1>
+
+  {% if default_password %}
+    <p class="warn">
+      Le compte administrateur utilise encore le mot de passe initial.
+      <a href="/account">Changez-le</a>.
+    </p>
+  {% endif %}
+
+  <div class="summary">
+    <div class="metric"><span class="label">Textes</span><span class="value">{{ texts|length }}</span></div>
+    <div class="metric"><span class="label">Lecteurs</span><span class="value">{{ progress|length }}</span></div>
+    <div class="metric"><span class="label">Mots illustrés</span><span class="value">{{ illustrated }}</span></div>
+    <div class="metric"><span class="label">Gloses partagées</span><span class="value">{{ glossed }}</span></div>
+    <div class="metric"><span class="label">À arbitrer</span><span class="value">{{ pending_arbitrations }}</span></div>
+  </div>
+
+  <p class="muted small">
+    Vous préparez la bibliothèque : textes, arbitrage des lemmes ambigus,
+    traductions partagées et images. Noter le vocabulaire revient aux lecteurs,
+    et votre compte n'a donc ni statuts ni fiches.
+  </p>
+
+  <h2>Ajouter un texte</h2>
+  <details class="importer" {% if not texts %}open{% endif %}>
+    <summary>Nouveau texte</summary>
+    <form method="post" action="/texts" class="form">
+      <div class="row">
+        <label>Titre <input name="title" placeholder="De bello Gallico I, 1"></label>
+        <label>Auteur <input name="author" placeholder="César"></label>
+        <label>État de langue
+          <select name="language_stage">
+            <option value="classical">classique</option>
+            <option value="late">tardif</option>
+            <option value="medieval">médiéval</option>
+            <option value="neolatin">néo-latin</option>
+          </select>
+        </label>
+      </div>
+      <label>Texte latin
+        <textarea name="content" rows="8" required placeholder="Gallia est omnis divisa…"></textarea>
+      </label>
+      <button type="submit">Importer et lemmatiser</button>
+    </form>
+  </details>
+
+  <h2>Ajouter une vidéo sous-titrée</h2>
+  {% if video_error %}<p class="error-box">{{ video_error }}</p>{% endif %}
+  <details class="importer">
+    <summary>Depuis YouTube</summary>
+    <form method="post" action="/texts/youtube" class="form">
+      <label>Adresse de la vidéo
+        <input name="url" required placeholder="https://www.youtube.com/watch?v=…">
+      </label>
+      <div class="row">
+        <label>Titre <input name="title" placeholder="laissez vide pour reprendre celui de la vidéo"></label>
+        <label>État de langue
+          <select name="language_stage">
+            <option value="classical">classique</option>
+            <option value="late">tardif</option>
+            <option value="medieval">médiéval</option>
+            <option value="neolatin">néo-latin</option>
+          </select>
+        </label>
+      </div>
+      <button type="submit">Importer les sous-titres</button>
+      <p class="muted small">
+        Seuls les sous-titres sont récupérés ; la vidéo reste sur YouTube et
+        s'affiche au-dessus du texte. Il faut qu'elle ait des sous-titres en latin.
+      </p>
+    </form>
+  </details>
+
+  <h2>Textes de la bibliothèque</h2>
+  {% if not texts %}<p class="muted">Aucun texte. Tous les lecteurs verront ceux que vous ajoutez ici.</p>{% endif %}
+  <ul class="texts">
+    {% for doc in texts %}
+      <li>
+        <div class="text-head">
+          <b>{{ doc.title }}</b>
+          {% if doc.source_kind == "youtube" %}<span class="badge">vidéo</span>{% endif %}
+          {% if doc.audio_path %}<span class="badge">audio</span>{% endif %}
+          {% if doc.author %}<span class="muted">{{ doc.author }}</span>{% endif %}
+          <span class="badge badge-{{ doc.status }}">{{ doc.status }}</span>
+          <span class="muted small right">{{ doc.word_count }} mots · {{ doc.engine }}</span>
+        </div>
+        {% if doc.error_message %}<p class="error small">{{ doc.error_message }}</p>{% endif %}
+        <div class="actions small">
+          <a href="/admin/texts/{{ doc.id }}"><b>ouvrir pour arbitrer</b></a>
+          <a href="/admin/texts/{{ doc.id }}/align">
+            {{ "aligner l'audio" if doc.audio_path else "ajouter un audio" }}</a>
+          <a href="/export/texts/{{ doc.id }}.conllu">CoNLL-U</a>
+          <form method="post" action="/texts/{{ doc.id }}/relemmatize" class="inline">
+            <select name="engine">
+              <option value="">moteur par défaut</option>
+              {% for e in engines %}<option value="{{ e.name }}">{{ e.name }}</option>{% endfor %}
+            </select>
+            <button class="link">relemmatiser</button>
+          </form>
+          <form method="post" action="/texts/{{ doc.id }}/delete" class="inline"
+                onsubmit="return confirm('Supprimer ce texte pour tout le monde ?')">
+            <button class="link danger">supprimer</button>
+          </form>
+        </div>
+      </li>
+    {% endfor %}
+  </ul>
+
+  <h2>Progression des lecteurs</h2>
+  {% if not progress %}
+    <p class="muted">Aucun lecteur inscrit. Ils peuvent créer leur compte depuis la page de connexion.</p>
+  {% else %}
+    <table class="grid">
+      <thead><tr><th>Lecteur</th><th>Mots suivis</th><th>Acquis</th><th>Fiches dues</th></tr></thead>
+      <tbody>
+        {% for row in progress %}
+          <tr>
+            <td>{{ row.user.display_name or row.user.username }}</td>
+            <td>{{ row.tracked }}</td>
+            <td>{{ row.known }}</td>
+            <td>{{ row.cards.due }} / {{ row.cards.total }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+
+  <h2>Réglages d'affichage</h2>
+  <p class="muted small">
+    Vos réglages peuvent servir de point de départ commun. Chacun reste libre
+    de les modifier ensuite.
+  </p>
+  <form method="post" action="/admin/settings/apply-to-all"
+        onsubmit="return confirm('Appliquer vos réglages d’affichage à tous les lecteurs ?')">
+    <button class="link">appliquer mes réglages à tous les lecteurs</button>
+  </form>
+</section>
+{% endblock %}

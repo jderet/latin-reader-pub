@@ -45,6 +45,54 @@
     </div>
   </form>
 
+  {# Les blocs `set` du gabarit parent ne franchissent pas la frontiere
+     d'un bloc : on relit donc le compte ici. #}
+  {% set est_admin = request.state.user and request.state.user.is_admin %}
+  {% if est_admin %}
+  <section class="maintenance">
+    <h2>Entretien du vocabulaire</h2>
+    <p class="muted small">
+      Supprime les mots qui n'ont <b>ni traduction ni image</b>. Leur statut,
+      leur note et leurs fiches sont perdus ; le mot réapparaîtra en bleu
+      dans les textes.
+    </p>
+
+    {% if purge.total %}
+      <p><b>{{ purge.total }}</b> mot(s) concerné(s)
+        {% if purge.cards %}, dont {{ purge.cards }} fiche(s) qui seraient supprimées{% endif %}.</p>
+      <ul class="muted small purge-detail">
+        {% for s, n in purge.by_status | dictsort %}
+          <li>statut {{ s }} ({{ status_labels[s] }}) : {{ n }}</li>
+        {% endfor %}
+        {% if purge.ignored %}<li>ignorés : {{ purge.ignored }}</li>{% endif %}
+        {% if purge.with_note %}<li>portant une note : {{ purge.with_note }}</li>{% endif %}
+      </ul>
+
+      {% if purge.by_status.get(0) %}
+        <p class="warn small">
+          Attention : {{ purge.by_status.get(0) }} mot(s) au statut 0 seraient supprimés.
+          Ce sont typiquement ceux validés en masse depuis un texte, que vous
+          aviez déclarés connus sans les traduire.
+        </p>
+      {% endif %}
+
+      <form method="post" action="/settings/purge-empty"
+            onsubmit="return confirm('Supprimer définitivement ces mots ? Cette action est irréversible.')">
+        <label class="chk small">
+          <input type="checkbox" name="keep_ignored" checked> conserver les mots ignorés
+        </label>
+        <label class="chk small">
+          <input type="checkbox" name="keep_noted" checked> conserver ceux qui portent une note
+        </label>
+        <div class="row-buttons">
+          <button type="submit" class="danger-btn">Supprimer les mots sans traduction ni image</button>
+        </div>
+      </form>
+    {% else %}
+      <p class="muted small">Aucun mot concerné : tous ont une traduction ou une image.</p>
+    {% endif %}
+  </section>
+
   <section class="diagnostic">
     <h2>Diagnostic</h2>
     <p class="muted small">
@@ -59,11 +107,78 @@
         {% endfor %}
       </tbody>
     </table>
+    <h3>Base lexicale (Gaffiot)</h3>
+    {% if diagnostic.gaffiot.available %}
+      <p class="muted small">
+        {{ "{:,}".format(diagnostic.gaffiot.entries).replace(",", " ") }} lemmes —
+        {{ diagnostic.gaffiot.source }}.<br>
+        Fournit les vedettes affichées et affine le classement des candidats.
+      </p>
+    {% else %}
+      <p class="warn small">
+        Base absente : les lemmes s'affichent sans leurs quantités.
+        Construisez-la avec <code>python tools/build_gaffiot.py</code>.
+      </p>
+    {% endif %}
+
+    <h3>Table forme → lemme</h3>
+    {% if diagnostic.form_table.available %}
+      <p class="muted small">
+        {{ "{:,}".format(diagnostic.form_table.forms).replace(",", " ") }} formes fléchies attestées —
+        {{ diagnostic.form_table.source }}.<br>
+        Pour ces formes, le lemme proposé est celui relevé dans un corpus
+        annoté à la main, et non déduit d'une règle.
+      </p>
+    {% else %}
+      <p class="warn small">
+        Table absente : les lemmes sont déduits par règles, sans vérification
+        que la forme leur corresponde vraiment.
+        Construisez-la avec <code>python tools/build_form_lemma.py</code>.
+      </p>
+    {% endif %}
+
+    <h3>Lexique court (info-bulles)</h3>
+    {% if diagnostic.short_lexicon.available %}
+      <p class="muted small">
+        {{ "{:,}".format(diagnostic.short_lexicon.entries).replace(",", " ") }} traductions courtes —
+        {{ diagnostic.short_lexicon.source }}.<br>
+        Affichées sous le mot au survol. Votre propre traduction, si vous en
+        avez saisi une, a toujours la priorité.
+      </p>
+    {% else %}
+      <p class="warn small">
+        Lexique absent : l'info-bulle n'affiche que le lemme.
+        Construisez-le avec <code>python tools/build_short_lexicon.py</code>.
+      </p>
+    {% endif %}
+
+    <h3>Dictionnaires StarDict</h3>
+    {% if diagnostic.stardicts %}
+      <table class="grid">
+        <thead><tr><th>Dictionnaire</th><th>Entrées</th><th>Fichier</th></tr></thead>
+        <tbody>
+          {% for d in diagnostic.stardicts %}
+            <tr><td>{{ d.name }}</td><td>{{ "{:,}".format(d.entries).replace(",", " ") }}</td>
+                <td class="muted small"><code>{{ d.file }}</code></td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="muted small">
+        Aucun dictionnaire chargé. Placez vos dossiers StarDict dans
+        <code>{{ diagnostic.stardict_dir }}</code>, un dossier par dictionnaire
+        (fichiers <code>.ifo</code>, <code>.idx</code>, <code>.dict</code> ou
+        <code>.dict.dz</code>), puis redémarrez l'application.
+      </p>
+    {% endif %}
+
     <p class="muted small">Empreinte globale : <code>{{ diagnostic.asset_version }}</code></p>
     <p class="muted small">
       Moteurs : {% for e in diagnostic.engines %}{{ e.name }} ({{ e.status }}){% if not loop.last %} · {% endif %}{% endfor %}
     </p>
   </section>
+
+  {% endif %}
 
   <form method="post" action="/settings/reset"
         onsubmit="return confirm('Rétablir tous les réglages par défaut ?')">

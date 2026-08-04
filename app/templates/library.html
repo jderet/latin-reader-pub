@@ -1,78 +1,154 @@
 {% extends "base.html" %}
+{% block title %}Bibliothèque{% endblock %}
 {% block content %}
-<section class="stack">
-  <div class="summary">
-    <div class="metric"><span class="label">Fiches dues</span><span class="value">{{ queue.due }}</span></div>
-    <div class="metric"><span class="label">Dont nouvelles</span><span class="value">{{ queue.new }}</span></div>
-    <div class="metric"><span class="label">Lemmes suivis</span><span class="value">{{ progress.total_tracked }}</span></div>
-  </div>
+<section class="home">
 
-  <details class="importer" {% if not rows %}open{% endif %}>
-    <summary>Ajouter un texte</summary>
-    <form method="post" action="/texts" class="form">
-      <div class="row">
-        <label>Titre <input name="title" placeholder="De bello Gallico I, 1"></label>
-        <label>Auteur <input name="author" placeholder="César"></label>
-        <label>État de langue
-          <select name="language_stage">
-            <option value="classical">classique</option>
-            <option value="late">tardif</option>
-            <option value="medieval">médiéval</option>
-            <option value="neolatin">néo-latin</option>
-          </select>
-        </label>
-      </div>
-      <label>Texte latin
-        <textarea name="content" rows="8" required placeholder="Gallia est omnis divisa in partes tres…"></textarea>
-      </label>
-      <button type="submit">Importer et lemmatiser</button>
-    </form>
-  </details>
+  <header class="home-hero">
+    <div class="hero-text">
+      <p class="hero-eyebrow">Lecture assistée du latin</p>
+      <h1>Lisez les auteurs latins dans le texte.</h1>
+      <p class="hero-lead">
+        Chaque mot est reconnu, ramené à son lemme et suivi dans votre
+        vocabulaire. Ce que vous apprenez dans César se colore aussitôt
+        chez Cicéron.
+      </p>
+    </div>
+    <dl class="hero-stats">
+      <div><dt>Mots suivis</dt><dd>{{ progress.total_tracked }}</dd></div>
+      <div><dt>Acquis</dt><dd>{{ progress.known }}</dd></div>
+      <div><dt>Fiches dues</dt><dd>{{ queue.due }}</dd></div>
+    </dl>
+  </header>
 
-  <h2>Textes</h2>
-  {% if not rows %}
-    <p class="muted">Aucun texte pour le moment.</p>
+  {% if resume %}
+    <a class="resume-card" href="/texts/{{ resume.doc.id }}">
+      <span class="resume-label">Reprendre la lecture</span>
+      <span class="resume-title">
+        {{ resume.doc.book.title ~ ' — ' if resume.doc.book }}{{ resume.doc.title }}
+      </span>
+      {% if resume.coverage %}
+        <span class="resume-meta">
+          {{ (resume.coverage.known_ratio * 100)|round }} % du vocabulaire connu ·
+          {{ resume.coverage.total_words }} mots
+        </span>
+      {% endif %}
+    </a>
   {% endif %}
-  <ul class="texts">
-    {% for row in rows %}
-      <li>
-        <div class="text-head">
-          <a class="text-title" href="/texts/{{ row.doc.id }}">{{ row.doc.title }}</a>
-          {% if row.doc.author %}<span class="muted">{{ row.doc.author }}</span>{% endif %}
-          <span class="badge badge-{{ row.doc.status }}">{{ row.doc.status }}</span>
-        </div>
-        {% if row.coverage %}
-          <div class="bar" title="part des occurrences connues">
-            <span style="width: {{ (row.coverage.known_ratio * 100)|round(1) }}%"></span>
-          </div>
-          <p class="muted small">
-            {{ row.coverage.total_words }} mots · {{ row.coverage.distinct_lemmas }} lemmes distincts ·
-            {{ (row.coverage.known_ratio * 100)|round(1) }} % connus ·
-            moteur {{ row.doc.engine }} {{ row.doc.engine_version }}
-          </p>
-        {% elif row.doc.status == 'failed' %}
-          <p class="error small">{{ row.doc.error_message }}</p>
-        {% endif %}
-        <div class="actions small">
-          <a href="/export/texts/{{ row.doc.id }}.conllu">CoNLL-U</a>
-          <form method="post" action="/texts/{{ row.doc.id }}/relemmatize" class="inline">
-            <select name="engine">
-              <option value="">moteur par défaut</option>
-              {% for e in engines %}<option value="{{ e.name }}">{{ e.name }}</option>{% endfor %}
-            </select>
-            <button type="submit" class="link">relemmatiser</button>
-          </form>
-          <form method="post" action="/texts/{{ row.doc.id }}/delete" class="inline"
-                onsubmit="return confirm('Supprimer ce texte ?')">
-            <button type="submit" class="link danger">supprimer</button>
-          </form>
-        </div>
-      </li>
-    {% endfor %}
-  </ul>
 
-  <p class="muted small">
-    Moteurs : {% for e in engines %}{{ e.name }} ({{ e.status }}){% if not loop.last %} · {% endif %}{% endfor %}
-  </p>
+  <form method="get" class="home-search" role="search">
+    <input type="search" name="q" value="{{ q }}"
+           placeholder="Chercher un livre, un auteur, un texte…" aria-label="Chercher">
+    <button type="submit">Chercher</button>
+    {% if q %}<a class="link" href="/">effacer</a>{% endif %}
+  </form>
+
+  {% if q %}
+    <p class="muted small">
+      Résultats pour « {{ q }} » — {{ by_author|length }} auteur(s), {{ loose|length }} texte(s) isolé(s).
+    </p>
+  {% else %}
+    <p class="muted small">
+      {{ book_count }} livre(s), {{ text_count }} texte(s) au catalogue.
+    </p>
+  {% endif %}
+
+  {% for auteur, entrees in by_author.items() %}
+    <section class="author-block">
+      <h2>{{ auteur }}</h2>
+      <div class="book-grid">
+        {% for e in entrees %}
+          <article class="book-card">
+            <div class="book-cover">
+              {% if e.book.cover_path %}
+                <img src="/media/{{ e.book.cover_path }}" alt="" loading="lazy">
+              {% else %}
+                <div class="cover-placeholder">{{ e.book.title[:1] }}</div>
+              {% endif %}
+            </div>
+            <div class="book-body">
+              <h3 class="book-title">{{ e.book.title }}</h3>
+              {% if e.book.subtitle %}<p class="book-sub">{{ e.book.subtitle }}</p>{% endif %}
+              <p class="book-meta">
+                {% if e.book.era %}<span>{{ e.book.era }}</span>{% endif %}
+                <span>{{ e.chapters|length }} chapitre(s)</span>
+                {% if e.book.translator %}<span>trad. {{ e.book.translator }}</span>{% endif %}
+              </p>
+
+              {% if e.spectrum %}
+                <div class="gauge" role="img"
+                     aria-label="{{ (e.ratio * 100)|round }} % du vocabulaire connu">
+                  {% for tranche in e.spectrum %}
+                    <span class="g-{{ tranche.key }}" style="width: {{ tranche.share }}%"
+                          title="{{ tranche.label }} — {{ tranche.count }} mots"></span>
+                  {% endfor %}
+                </div>
+                <p class="gauge-legend small">
+                  {% set part = (e.ratio * 100)|round %}
+                  <b class="{{ 'ready' if part >= 90 else ('near' if part >= 70 else '') }}">{{ part }} %</b>
+                  <span class="muted">connus sur {{ e.words }} mots</span>
+                </p>
+              {% endif %}
+
+              <ol class="chapter-links">
+                {% for c in e.chapters %}
+                  <li>
+                    <a href="/texts/{{ c.doc.id }}">
+                      {{ c.doc.chapter_label or c.doc.title }}
+                    </a>
+                    {% if c.coverage %}
+                      <span class="muted small">
+                        {{ (c.coverage.known_ratio * 100)|round }} %
+                      </span>
+                    {% endif %}
+                  </li>
+                {% endfor %}
+              </ol>
+            </div>
+          </article>
+        {% endfor %}
+      </div>
+    </section>
+  {% endfor %}
+
+  {% if loose %}
+    <section class="author-block">
+      <h2>Textes isolés</h2>
+      <ul class="texts">
+        {% for row in loose %}
+          <li>
+            <div class="text-head">
+              <a class="text-title" href="/texts/{{ row.doc.id }}">{{ row.doc.title }}</a>
+              {% if row.doc.author %}<span class="muted">{{ row.doc.author }}</span>{% endif %}
+              {% if row.doc.source_kind == "youtube" %}<span class="badge">vidéo</span>{% endif %}
+              {% if row.doc.audio_path %}<span class="badge">audio</span>{% endif %}
+            </div>
+            {% if row.coverage %}
+              {% set part = (row.coverage.known_ratio * 100)|round %}
+              <div class="gauge" role="img" aria-label="{{ part }} % du vocabulaire connu">
+                {% for tranche in row.coverage.spectrum %}
+                  <span class="g-{{ tranche.key }}" style="width: {{ tranche.share }}%"
+                        title="{{ tranche.label }} — {{ tranche.count }} mots"></span>
+                {% endfor %}
+              </div>
+              <p class="gauge-legend small">
+                <b class="{{ 'ready' if part >= 90 else ('near' if part >= 70 else '') }}">{{ part }} %</b>
+                <span class="muted">connus sur {{ row.coverage.total_words }} mots</span>
+              </p>
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    </section>
+  {% endif %}
+
+  {% if not by_author and not loose %}
+    <p class="muted">
+      {% if q %}Aucun résultat.{% else %}
+        La bibliothèque est vide. C'est l'administrateur qui l'alimente.
+      {% endif %}
+    </p>
+  {% endif %}
+
+  {% include "_offer.html" %}
 </section>
 {% endblock %}

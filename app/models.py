@@ -65,6 +65,45 @@ class Base(DeclarativeBase):
     type_annotation_map = {dict[str, Any]: JSON, list[Any]: JSON}
 
 
+class PageRead(Base):
+    """Page qu'un lecteur declare avoir lue.
+
+    Marquer une page lue et noter son vocabulaire sont deux gestes
+    distincts : on peut avoir tout compris sans rien vouloir enregistrer.
+    La trace sert a mesurer l'avancee dans un texte long.
+    """
+
+    __tablename__ = "page_read"
+
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("user.id", ondelete="CASCADE"), primary_key=True
+    )
+    text_id: Mapped[int] = mapped_column(
+        ForeignKey("text.id", ondelete="CASCADE"), primary_key=True
+    )
+    page_idx: Mapped[int] = mapped_column(Integer, primary_key=True)
+    read_at: Mapped[dt.datetime] = mapped_column(UtcDateTime, default=utcnow)
+
+
+# --------------------------------------------------------------------------
+# Comptes
+# --------------------------------------------------------------------------
+class User(Base):
+    """Un compte. L'administrateur est purement gestionnaire : il prepare
+    les textes, arbitre les lemmes et illustre le vocabulaire, mais ne lit
+    ni n'annote — c'est le propre des utilisateurs."""
+
+    __tablename__ = "user"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    username: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    password_hash: Mapped[str] = mapped_column(String(255))
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
+    display_name: Mapped[str | None] = mapped_column(String(120), default=None)
+    created_at: Mapped[dt.datetime] = mapped_column(UtcDateTime, default=utcnow)
+    last_seen: Mapped[dt.datetime | None] = mapped_column(UtcDateTime, default=None)
+
+
 # --------------------------------------------------------------------------
 # Lexique
 # --------------------------------------------------------------------------
@@ -81,10 +120,13 @@ class Lemma(Base):
     homonym_idx: Mapped[int] = mapped_column(Integer, default=0)
     headword: Mapped[str | None] = mapped_column(String(160), default=None)
     lemma_meta: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
-
-    status: Mapped["LemmaStatus | None"] = relationship(
-        back_populates="lemma_obj", uselist=False, cascade="all, delete-orphan"
-    )
+    # Renseignes par l'administrateur, visibles de tous. Chaque utilisateur
+    # peut remplacer la glose par la sienne (LemmaStatus.gloss).
+    shared_gloss: Mapped[str | None] = mapped_column(Text, default=None)
+    # Nom propre ou mot-outil ecarte du comptage pour tous les lecteurs.
+    is_ignored: Mapped[bool] = mapped_column(Boolean, default=False)
+    image_path: Mapped[str | None] = mapped_column(String(240), default=None)
+    image_alt: Mapped[str | None] = mapped_column(String(240), default=None)
 
     @property
     def display(self) -> str:
@@ -112,6 +154,40 @@ class FormLemma(Base):
 
 
 # --------------------------------------------------------------------------
+# Livres et textes
+# --------------------------------------------------------------------------
+class Book(Base):
+    """Un recueil ordonne de textes.
+
+    Chaque texte en est un chapitre numerote : « De bello Gallico » se lit
+    livre I, livre II… L'ordre importe, c'est ce qui distingue un livre
+    d'un simple etiquetage.
+    """
+
+    __tablename__ = "book"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    title: Mapped[str] = mapped_column(String(240))
+    subtitle: Mapped[str | None] = mapped_column(String(240), default=None)
+    author: Mapped[str | None] = mapped_column(String(160), default=None, index=True)
+    era: Mapped[str | None] = mapped_column(String(64), default=None)
+    translator: Mapped[str | None] = mapped_column(String(160), default=None)
+    description: Mapped[str | None] = mapped_column(Text, default=None)
+    cover_path: Mapped[str | None] = mapped_column(String(240), default=None)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[dt.datetime] = mapped_column(UtcDateTime, default=utcnow)
+
+    texts: Mapped[list["TextDoc"]] = relationship(
+        back_populates="book", order_by="TextDoc.chapter_idx"
+    )
+
+    @property
+    def display_author(self) -> str:
+        return self.author or "Anonyme"
+
+
+# --------------------------------------------------------------------------
 # Textes
 # --------------------------------------------------------------------------
 class TextDoc(Base):
@@ -123,6 +199,14 @@ class TextDoc(Base):
     source_note: Mapped[str | None] = mapped_column(Text, default=None)
     raw_content: Mapped[str] = mapped_column(Text)
     language_stage: Mapped[str] = mapped_column(String(24), default="classical")
+    # Origine du texte : saisi, ou sous-titres d'une video.
+    source_kind: Mapped[str] = mapped_column(String(16), default="text")
+    video_id: Mapped[str | None] = mapped_column(String(16), default=None)
+    audio_path: Mapped[str | None] = mapped_column(String(240), default=None)
+    # Segments : intervalle de caracteres, et bornes temporelles quand
+    # l'alignement a ete fait. Meme structure pour les sous-titres d'une
+    # video et pour un enregistrement : le surlignage est le meme code.
+    cues: Mapped[list[Any]] = mapped_column(JSON, default=list)
     status: Mapped[str] = mapped_column(String(16), default="pending")
     engine: Mapped[str | None] = mapped_column(String(40), default=None)
     engine_version: Mapped[str | None] = mapped_column(String(60), default=None)
@@ -131,6 +215,16 @@ class TextDoc(Base):
     page_count: Mapped[int] = mapped_column(Integer, default=1)
     error_message: Mapped[str | None] = mapped_column(Text, default=None)
     created_at: Mapped[dt.datetime] = mapped_column(UtcDateTime, default=utcnow)
+    created_by: Mapped[int | None] = mapped_column(
+        ForeignKey("user.id", ondelete="SET NULL"), default=None
+    )
+    book_id: Mapped[int | None] = mapped_column(
+        ForeignKey("book.id", ondelete="SET NULL"), default=None, index=True
+    )
+    chapter_idx: Mapped[int] = mapped_column(Integer, default=0)
+    chapter_label: Mapped[str | None] = mapped_column(String(120), default=None)
+
+    book: Mapped["Book | None"] = relationship(back_populates="texts")
 
     tokens: Mapped[list["TextToken"]] = relationship(
         back_populates="text", cascade="all, delete-orphan", order_by="TextToken.idx"
@@ -155,6 +249,11 @@ class TextToken(Base):
     char_end: Mapped[int] = mapped_column(Integer)
     trailing: Mapped[str] = mapped_column(String(40), default=" ")
     is_word: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Enclitique detachee (« -que », « -cum ») et lien vers son porteur.
+    is_enclitic: Mapped[bool] = mapped_column(Boolean, default=False)
+    parent_token_id: Mapped[int | None] = mapped_column(
+        ForeignKey("text_token.id", ondelete="SET NULL"), default=None
+    )
     form_id: Mapped[int | None] = mapped_column(ForeignKey("form.id"), default=None)
     chosen_lemma_id: Mapped[int | None] = mapped_column(
         ForeignKey("lemma.id"), default=None
@@ -179,22 +278,27 @@ class LemmaStatus(Base):
     """
 
     __tablename__ = "lemma_status"
-    __table_args__ = (CheckConstraint("status BETWEEN 0 AND 4", name="ck_status_range"),)
+    __table_args__ = (
+        CheckConstraint("status BETWEEN 0 AND 4", name="ck_status_range"),
+        Index("ix_status_user", "user_id", "status"),
+    )
 
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("user.id", ondelete="CASCADE"), primary_key=True
+    )
     lemma_id: Mapped[int] = mapped_column(
         ForeignKey("lemma.id", ondelete="CASCADE"), primary_key=True
     )
     status: Mapped[int] = mapped_column(Integer, default=4)
     is_ignored: Mapped[bool] = mapped_column(Boolean, default=False)
     is_locked: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Glose personnelle : si elle est vide, celle du lemme s'applique.
     gloss: Mapped[str | None] = mapped_column(Text, default=None)
     note: Mapped[str | None] = mapped_column(Text, default=None)
-    image_path: Mapped[str | None] = mapped_column(String(240), default=None)
-    image_alt: Mapped[str | None] = mapped_column(String(240), default=None)
     first_seen: Mapped[dt.datetime] = mapped_column(UtcDateTime, default=utcnow)
     updated_at: Mapped[dt.datetime] = mapped_column(UtcDateTime, default=utcnow)
 
-    lemma_obj: Mapped[Lemma] = relationship(back_populates="status")
+    lemma_obj: Mapped[Lemma] = relationship()
 
 
 class DisambiguationOverride(Base):
@@ -224,6 +328,9 @@ class MorphSkill(Base):
 
     __tablename__ = "morph_skill"
 
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("user.id", ondelete="CASCADE"), primary_key=True
+    )
     feature_key: Mapped[str] = mapped_column(String(64), primary_key=True)
     successes: Mapped[int] = mapped_column(Integer, default=0)
     attempts: Mapped[int] = mapped_column(Integer, default=0)
@@ -240,11 +347,12 @@ class MorphSkill(Base):
 class Card(Base):
     __tablename__ = "card"
     __table_args__ = (
-        UniqueConstraint("lemma_id", "kind", name="uq_card_lemma_kind"),
-        Index("ix_card_due", "is_suspended", "due_at"),
+        UniqueConstraint("user_id", "lemma_id", "kind", name="uq_card_lemma_kind"),
+        Index("ix_card_due", "user_id", "is_suspended", "due_at"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("user.id", ondelete="CASCADE"))
     lemma_id: Mapped[int] = mapped_column(ForeignKey("lemma.id", ondelete="CASCADE"))
     kind: Mapped[str] = mapped_column(String(8))  # la_fr | fr_la | cloze
     front: Mapped[str] = mapped_column(Text)
@@ -306,5 +414,9 @@ class ReviewLog(Base):
 
 class Setting(Base):
     __tablename__ = "setting"
+
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("user.id", ondelete="CASCADE"), primary_key=True
+    )
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
     value: Mapped[str] = mapped_column(Text)

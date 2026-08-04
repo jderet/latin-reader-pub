@@ -1,0 +1,16 @@
+Placez ici vos dictionnaires StarDict, un dossier par dictionnaire.
+
+    data/dictionaries/
+        gaffiot/
+            gaffiot.ifo
+            gaffiot.idx        (ou gaffiot.idx.gz)
+            gaffiot.dict.dz    (ou gaffiot.dict)
+            gaffiot.syn        (facultatif : formes fléchies)
+        lewis-short/
+            ...
+
+Redémarrez l'application : les dictionnaires apparaissent dans le panneau
+latéral du mode lecture. L'onglet Réglages liste ceux qui ont été chargés.
+
+Un .dict.dz est décompressé une seule fois vers un .dict voisin, gardé en
+cache. Prévoyez la place disque correspondante.

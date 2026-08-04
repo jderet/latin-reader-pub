@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Mon compte{% endblock %}
+{% block content %}
+<section class="stack">
+  <h1>Mon compte</h1>
+  <p class="muted small">
+    Identifiant : <b>{{ account.username }}</b>
+    {% if account.is_admin %}<span class="badge">administrateur</span>{% endif %}
+  </p>
+
+  {% if error %}<p class="error-box">{{ error }}</p>{% endif %}
+  {% if message %}<p class="notice">{{ message }}</p>{% endif %}
+
+  <h2>Changer de mot de passe</h2>
+  <form method="post" action="/account/password" class="form" style="max-width:26rem">
+    <label>Mot de passe actuel
+      <input type="password" name="current" required autocomplete="current-password">
+    </label>
+    <label>Nouveau mot de passe
+      <input type="password" name="password" required autocomplete="new-password">
+    </label>
+    <button type="submit">Modifier</button>
+  </form>
+</section>
+{% endblock %}

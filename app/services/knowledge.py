@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections import Counter
+from collections import Counter, defaultdict
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -20,12 +20,9 @@ STATUS_LABELS = {
 KNOWN_THRESHOLD = 1  # statut <= 1 compte comme connu
 
 
-def get_status(session: Session, lemma_id: int) -> LemmaStatus | None:
-    return session.get(LemmaStatus, lemma_id)
-
-
 def set_status(
     session: Session,
+    user_id: int,
     lemma_id: int,
     *,
     status: int | None = None,
@@ -40,14 +37,15 @@ def set_status(
     Une modification manuelle pose is_locked et gele les transitions
     automatiques jusqu'a deverrouillage explicite.
     """
-    row = session.get(LemmaStatus, lemma_id)
+    row = session.get(LemmaStatus, (user_id, lemma_id))
     if row is None:
         # Deux requetes rapprochees (poser un statut puis enregistrer une
         # glose) peuvent constater l'absence de ligne en meme temps et
         # tenter chacune de la creer. On absorbe la collision : celle qui
         # perd la course relit simplement la ligne creee par l'autre.
         candidate = LemmaStatus(
-            lemma_id=lemma_id, status=status if status is not None else 4
+            user_id=user_id, lemma_id=lemma_id,
+            status=status if status is not None else 4,
         )
         try:
             with session.begin_nested():
@@ -56,7 +54,7 @@ def set_status(
             row = candidate
         except IntegrityError:
             session.expire_all()
-            row = session.get(LemmaStatus, lemma_id)
+            row = session.get(LemmaStatus, (user_id, lemma_id))
             if row is None:  # pragma: no cover - ne devrait pas arriver
                 raise
 
@@ -83,22 +81,28 @@ def set_status(
     return row
 
 
-def statuses_for_tokens(session: Session, token_rows: list[TextToken]) -> dict[int, LemmaStatus]:
+def statuses_for_tokens(
+    session: Session, user_id: int, token_rows: list[TextToken]
+) -> dict[int, LemmaStatus]:
     ids = {t.chosen_lemma_id for t in token_rows if t.chosen_lemma_id}
     if not ids:
         return {}
-    rows = session.scalars(select(LemmaStatus).where(LemmaStatus.lemma_id.in_(ids))).all()
+    rows = session.scalars(
+        select(LemmaStatus).where(
+            LemmaStatus.user_id == user_id, LemmaStatus.lemma_id.in_(ids)
+        )
+    ).all()
     return {r.lemma_id: r for r in rows}
 
 
-def text_coverage(session: Session, text_id: int) -> dict:
+def text_coverage(session: Session, user_id: int, text_id: int) -> dict:
     """Repartition des occurrences par statut, plus les inconnus frequents."""
     tokens = session.scalars(
         select(TextToken).where(
             TextToken.text_id == text_id, TextToken.is_word.is_(True)
         )
     ).all()
-    statuses = statuses_for_tokens(session, tokens)
+    statuses = statuses_for_tokens(session, user_id, tokens)
 
     buckets = Counter()
     unknown_freq: Counter[int] = Counter()
@@ -129,19 +133,45 @@ def text_coverage(session: Session, text_id: int) -> dict:
             top.append({"lemma_id": lemma_id, "lemma": lemma.display, "count": count})
 
     distinct = len({t.chosen_lemma_id for t in tokens if t.chosen_lemma_id})
+    # Repartition ordonnee, du mieux su au jamais vu : c'est ce qui
+    # permet de dessiner une jauge lisible d'un coup d'oeil.
+    spectre = []
+    for statut in (0, 1, 2, 3, 4):
+        nombre = buckets.get(STATUS_LABELS[statut], 0)
+        if nombre:
+            spectre.append(
+                {
+                    "key": f"s{statut}",
+                    "label": STATUS_LABELS[statut],
+                    "count": nombre,
+                    "share": round(100 * nombre / total, 1) if total else 0,
+                }
+            )
+    jamais = buckets.get("jamais vu", 0)
+    if jamais:
+        spectre.append(
+            {
+                "key": "unseen",
+                "label": "jamais rencontré",
+                "count": jamais,
+                "share": round(100 * jamais / total, 1) if total else 0,
+            }
+        )
+
     return {
         "total_words": total,
         "distinct_lemmas": distinct,
         "known_ratio": round(known / total, 4) if total else 0.0,
         "buckets": dict(buckets),
+        "spectrum": spectre,
         "top_unknown": top,
     }
 
 
-def global_progress(session: Session) -> dict:
+def global_progress(session: Session, user_id: int) -> dict:
     rows = session.execute(
         select(LemmaStatus.status, func.count())
-        .where(LemmaStatus.is_ignored.is_(False))
+        .where(LemmaStatus.user_id == user_id, LemmaStatus.is_ignored.is_(False))
         .group_by(LemmaStatus.status)
     ).all()
     by_status = {STATUS_LABELS[s]: c for s, c in rows}
@@ -164,11 +194,13 @@ def feature_keys(feats: dict) -> list[str]:
     return keys
 
 
-def record_morph_attempt(session: Session, feats: dict, *, success: bool) -> None:
+def record_morph_attempt(
+    session: Session, user_id: int, feats: dict, *, success: bool
+) -> None:
     for key in feature_keys(feats):
-        row = session.get(MorphSkill, key)
+        row = session.get(MorphSkill, (user_id, key))
         if row is None:
-            row = MorphSkill(feature_key=key)
+            row = MorphSkill(user_id=user_id, feature_key=key)
             session.add(row)
             session.flush()
         row.attempts += 1
@@ -177,8 +209,12 @@ def record_morph_attempt(session: Session, feats: dict, *, success: bool) -> Non
         row.updated_at = utcnow()
 
 
-def weakest_features(session: Session, limit: int = 10) -> list[dict]:
-    rows = session.scalars(select(MorphSkill).where(MorphSkill.attempts >= 3)).all()
+def weakest_features(session: Session, user_id: int, limit: int = 10) -> list[dict]:
+    rows = session.scalars(
+        select(MorphSkill).where(
+            MorphSkill.user_id == user_id, MorphSkill.attempts >= 3
+        )
+    ).all()
     rows.sort(key=lambda r: r.accuracy)
     return [
         {
@@ -196,7 +232,7 @@ def weakest_features(session: Session, limit: int = 10) -> list[dict]:
 IMAGE_STATUSES = {4, 3}  # + « jamais vu » : voir show_image_for()
 
 
-def show_image_for(status_row: "LemmaStatus | None") -> bool:
+def show_image_for(status_row: "LemmaStatus | None") -> bool:  # noqa: D401
     """L'image ne s'affiche que tant que le mot est mal connu.
 
     Jamais rencontre, statut 4 ou statut 3. Au-dela, l'utilisateur le
@@ -211,6 +247,7 @@ def show_image_for(status_row: "LemmaStatus | None") -> bool:
 
 def vocabulary(
     session: Session,
+    user_id: int,
     *,
     query: str = "",
     status_filter: int | None = None,
@@ -219,7 +256,11 @@ def vocabulary(
     limit: int = 500,
 ) -> list[dict]:
     """Lemmes annotes par l'utilisateur, pour l'onglet « Mots »."""
-    stmt = select(LemmaStatus, Lemma).join(Lemma, Lemma.id == LemmaStatus.lemma_id)
+    stmt = (
+        select(LemmaStatus, Lemma)
+        .join(Lemma, Lemma.id == LemmaStatus.lemma_id)
+        .where(LemmaStatus.user_id == user_id)
+    )
 
     if only_ignored:
         stmt = stmt.where(LemmaStatus.is_ignored.is_(True))
@@ -227,10 +268,11 @@ def vocabulary(
         stmt = stmt.where(LemmaStatus.is_ignored.is_(False))
     if status_filter is not None:
         stmt = stmt.where(LemmaStatus.status == status_filter)
+    # L'image est desormais portee par le lemme, non par le statut.
     if with_image is True:
-        stmt = stmt.where(LemmaStatus.image_path.is_not(None))
+        stmt = stmt.where(Lemma.image_path.is_not(None))
     elif with_image is False:
-        stmt = stmt.where(LemmaStatus.image_path.is_(None))
+        stmt = stmt.where(Lemma.image_path.is_(None))
     if query.strip():
         pattern = f"%{query.strip().lower()}%"
         stmt = stmt.where(
@@ -241,39 +283,56 @@ def vocabulary(
     stmt = stmt.order_by(LemmaStatus.status.desc(), Lemma.lemma).limit(limit)
     rows = session.execute(stmt).all()
 
-    out = []
-    for status_row, lemma in rows:
-        tokens = session.scalars(
-            select(TextToken).where(TextToken.chosen_lemma_id == lemma.id)
+    # Les formes rencontrees sont chargees en une seule requete pour tous
+    # les lemmes affiches. Une requete par ligne (« N+1 ») coutait 162
+    # allers-retours pour 161 mots, alors qu'un seul suffit.
+    lemma_ids = [lemma.id for _, lemma in rows]
+    formes: dict[int, Counter] = defaultdict(Counter)
+    textes: dict[int, set[int]] = defaultdict(set)
+    if lemma_ids:
+        observees = session.execute(
+            select(
+                TextToken.chosen_lemma_id,
+                TextToken.surface,
+                TextToken.text_id,
+                func.count(),
+            )
+            .where(TextToken.chosen_lemma_id.in_(lemma_ids))
+            .group_by(TextToken.chosen_lemma_id, TextToken.surface, TextToken.text_id)
         ).all()
-        forms = Counter(t.surface for t in tokens)
-        out.append(
-            {
-                "lemma": lemma,
-                "status": status_row,
-                "forms": forms.most_common(12),
-                "occurrences": len(tokens),
-                "texts": sorted({t.text_id for t in tokens}),
-            }
-        )
-    return out
+        for lemma_id, surface, text_id, nombre in observees:
+            formes[lemma_id][surface] += nombre
+            textes[lemma_id].add(text_id)
+
+    return [
+        {
+            "lemma": lemma,
+            "status": status_row,
+            "forms": formes[lemma.id].most_common(12),
+            "occurrences": sum(formes[lemma.id].values()),
+            "texts": sorted(textes[lemma.id]),
+        }
+        for status_row, lemma in rows
+    ]
 
 
-def status_counts(session: Session) -> dict:
+def status_counts(session: Session, user_id: int) -> dict:
     rows = session.execute(
         select(LemmaStatus.status, func.count())
-        .where(LemmaStatus.is_ignored.is_(False))
+        .where(LemmaStatus.user_id == user_id, LemmaStatus.is_ignored.is_(False))
         .group_by(LemmaStatus.status)
     ).all()
     counts = {s: c for s, c in rows}
     ignored = session.scalar(
-        select(func.count()).select_from(LemmaStatus).where(LemmaStatus.is_ignored.is_(True))
+        select(func.count()).select_from(LemmaStatus).where(
+            LemmaStatus.user_id == user_id, LemmaStatus.is_ignored.is_(True)
+        )
     )
     return {"by_status": counts, "ignored": ignored or 0}
 
 
 def validate_unseen(
-    session: Session, token_rows: list[TextToken], *, status: int = 0
+    session: Session, user_id: int, token_rows: list[TextToken], *, status: int = 0
 ) -> dict:
     """Marque d'un coup tous les lemmes encore absents de la base.
 
@@ -300,12 +359,15 @@ def validate_unseen(
     existing = {
         r.lemma_id
         for r in session.scalars(
-            select(LemmaStatus).where(LemmaStatus.lemma_id.in_(candidate_ids))
+            select(LemmaStatus).where(
+                LemmaStatus.user_id == user_id,
+                LemmaStatus.lemma_id.in_(candidate_ids),
+            )
         ).all()
     }
     new_ids = candidate_ids - existing
     for lemma_id in new_ids:
-        set_status(session, lemma_id, status=status, manual=True)
+        set_status(session, user_id, lemma_id, status=status, manual=True)
 
     token_ids = [
         t.id for t in token_rows if t.chosen_lemma_id in new_ids
@@ -316,3 +378,98 @@ def validate_unseen(
         "lemma_ids": sorted(new_ids),
         "token_ids": token_ids,
     }
+
+
+# --------------------------------------------------------------------------
+# Menage : mots sans contenu
+# --------------------------------------------------------------------------
+def words_without_content(session: Session, user_id: int) -> list[LemmaStatus]:
+    """Mots n'ayant ni traduction ni image.
+
+    Une note seule ne suffit pas a retenir un mot : c'est la traduction
+    ou l'image qui en fait une entree de vocabulaire exploitable.
+    """
+    # Ni traduction personnelle, ni glose partagee, ni image : le mot
+    # n'apporte rien a l'utilisateur.
+    rows = session.scalars(
+        select(LemmaStatus)
+        .join(Lemma, Lemma.id == LemmaStatus.lemma_id)
+        .where(
+            LemmaStatus.user_id == user_id,
+            (LemmaStatus.gloss.is_(None) | (func.trim(LemmaStatus.gloss) == "")),
+            (Lemma.shared_gloss.is_(None) | (func.trim(Lemma.shared_gloss) == "")),
+            Lemma.image_path.is_(None),
+        )
+    ).all()
+    return list(rows)
+
+
+def summarize_without_content(session: Session, user_id: int) -> dict:
+    """Apercu avant suppression, ventile par statut.
+
+    Sert a montrer a l'utilisateur ce qu'il s'apprete a perdre : les mots
+    valides en masse (statut 0, sans traduction) figurent dans ce lot.
+    """
+    rows = words_without_content(session, user_id)
+    par_statut = Counter()
+    ignores = 0
+    avec_note = 0
+    for row in rows:
+        if row.is_ignored:
+            ignores += 1
+        else:
+            par_statut[row.status] += 1
+        if row.note and row.note.strip():
+            avec_note += 1
+
+    lemma_ids = [r.lemma_id for r in rows]
+    cartes = 0
+    if lemma_ids:
+        from ..models import Card
+
+        cartes = session.scalar(
+            select(func.count()).select_from(Card).where(
+                Card.user_id == user_id, Card.lemma_id.in_(lemma_ids)
+            )
+        ) or 0
+
+    return {
+        "total": len(rows),
+        "by_status": dict(par_statut),
+        "ignored": ignores,
+        "with_note": avec_note,
+        "cards": cartes,
+    }
+
+
+def purge_without_content(
+    session: Session, user_id: int, *,
+    keep_ignored: bool = True, keep_noted: bool = True,
+) -> dict:
+    """Supprime les mots sans traduction ni image.
+
+    Par defaut on epargne deux categories, dont la suppression serait
+    presque toujours une perte : les mots explicitement ignores (le
+    reglage est une decision de l'utilisateur) et ceux portant une note.
+    """
+    from ..models import Card
+
+    cibles = [
+        row
+        for row in words_without_content(session, user_id)
+        if not (keep_ignored and row.is_ignored)
+        and not (keep_noted and row.note and row.note.strip())
+    ]
+    if not cibles:
+        return {"deleted": 0, "cards": 0, "lemma_ids": []}
+
+    lemma_ids = [r.lemma_id for r in cibles]
+    cartes = session.scalars(
+        select(Card).where(Card.user_id == user_id, Card.lemma_id.in_(lemma_ids))
+    ).all()
+    for carte in cartes:
+        session.delete(carte)
+    for row in cibles:
+        session.delete(row)
+    session.flush()
+    return {"deleted": len(cibles), "cards": len(cartes), "lemma_ids": lemma_ids}

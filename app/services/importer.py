@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import re
 import threading
+import unicodedata
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -17,9 +18,9 @@ from ..models import (
     Lemma,
     TextDoc,
     TextToken,
-    utcnow,
 )
-from ..nlp.base import AnalysisResult, TokenAnalysis, _bare
+from ..nlp.base import AnalysisResult
+from ..nlp.normalize import lemma_key
 from ..nlp.registry import get_lemmatizer
 
 log = logging.getLogger(__name__)
@@ -37,16 +38,47 @@ _ROMAN_RE = re.compile(r"^[IVXLCDM]+$")
 def get_or_create_lemma(
     session: Session, lemma: str, upos: str, homonym_idx: int = 0
 ) -> Lemma:
-    bare = _bare(lemma)
+    """Retourne le lemme, en le creant au besoin.
+
+    La cle est normalisee comme partout ailleurs : minuscules, sans
+    diacritiques, u pour v et i pour j. Sans cela, Stanza rendant
+    « provincia » et le lexique embarque « prouincia », le meme mot
+    donnerait deux entrees distinctes — donc deux statuts, deux
+    traductions et deux images.
+    """
+    cle = lemma_key(lemma)
     stmt = select(Lemma).where(
-        Lemma.lemma == bare, Lemma.upos == upos, Lemma.homonym_idx == homonym_idx
+        Lemma.lemma == cle, Lemma.upos == upos, Lemma.homonym_idx == homonym_idx
     )
     obj = session.scalars(stmt).first()
     if obj is None:
-        obj = Lemma(lemma=bare, upos=upos, homonym_idx=homonym_idx)
+        obj = Lemma(
+            lemma=cle,
+            upos=upos,
+            homonym_idx=homonym_idx,
+            # Vedette du Gaffiot si le mot y figure — « flūmĕn, ĭnis »
+            # se lit mieux que « flumen ». Sinon, la graphie d'origine.
+            headword=_headword_for(lemma, upos),
+        )
         session.add(obj)
         session.flush()
+    elif obj.headword is None:
+        obj.headword = _headword_for(lemma, upos)
     return obj
+
+
+def _headword_for(lemma: str, upos: str) -> str:
+    from .gaffiot import get_gaffiot
+
+    return get_gaffiot().headword(lemma, upos) or _display_form(lemma)
+
+
+def _display_form(lemma: str) -> str:
+    """Graphie lisible : minuscules, indice d'homonymie retire, v et j
+    conserves tels que le moteur les a rendus."""
+    import re as _re
+
+    return _re.sub(r"[#\d]+$", "", lemma).lower()
 
 
 def get_or_create_form(session: Session, key: str) -> Form:
@@ -75,17 +107,40 @@ def link_form_lemma(session: Session, form: Form, lemma: Lemma, feats: dict) -> 
 # --------------------------------------------------------------------------
 # Import
 # --------------------------------------------------------------------------
+def normalize_input(text: str) -> str:
+    """Normalise le texte a l'import.
+
+    Unicode NFC : un texte macronise peut arriver « decompose » (le macron
+    stocke a part), ce que produit couramment macOS. On recompose donc
+    systematiquement, pour que la graphie affichee et les longueurs de
+    caracteres soient stables.
+
+    Les espaces insecables et guillemets typographiques sont aussi
+    uniformises : ils faussent le decoupage en mots.
+    """
+    text = unicodedata.normalize("NFC", text)
+    for src, dst in (
+        ("\u00a0", " "), ("\u202f", " "), ("\u2007", " "),
+        ("\u2018", "'"), ("\u2019", "'"), ("\u201c", '"'), ("\u201d", '"'),
+        ("\u2013", "-"), ("\u2014", "-"), ("\ufeff", ""),
+    ):
+        text = text.replace(src, dst)
+    return text
+
+
 def create_text(
     session: Session, *, title: str, content: str, author: str | None = None,
     source_note: str | None = None, language_stage: str = "classical",
+    created_by: int | None = None,
 ) -> TextDoc:
     doc = TextDoc(
         title=title.strip() or "Sans titre",
         author=author,
         source_note=source_note,
-        raw_content=content,
+        raw_content=normalize_input(content),
         language_stage=language_stage,
         status="pending",
+        created_by=created_by,
     )
     session.add(doc)
     session.flush()
@@ -135,8 +190,16 @@ def _persist(
 
     for analysis in result.tokens:
         page = analysis.index // TOKENS_PER_PAGE
-        trailing = content[analysis.char_end : analysis.char_end + 1]
-        if trailing and not trailing.isspace():
+        # Ce qui suit immediatement le token dans le texte source. Une
+        # chaine vide est significative : c'est le cas d'un radical suivi
+        # de son enclitique (« uirum » puis « que »), qui doivent rester
+        # colles a l'affichage.
+        following = content[analysis.char_end : analysis.char_end + 2]
+        if not following:
+            trailing = ""
+        elif following[0].isspace():
+            trailing = "\n" if "\n" in following else " "
+        else:
             trailing = ""
 
         token = TextToken(
@@ -147,8 +210,9 @@ def _persist(
             surface=analysis.surface,
             char_start=analysis.char_start,
             char_end=analysis.char_end,
-            trailing=trailing or ("\n" if "\n" in content[analysis.char_end : analysis.char_end + 2] else " "),
+            trailing=trailing,
             is_word=analysis.is_word,
+            is_enclitic=analysis.parent_token_index is not None,
             candidates=[c.as_dict() for c in analysis.candidates],
             ambiguity_margin=analysis.ambiguity_margin,
         )
@@ -183,6 +247,9 @@ def _persist(
             get_or_create_lemma(session, cand.lemma, cand.upos)
 
         session.add(token)
+
+    session.flush()
+    _link_enclitics(session, doc.id, result)
 
     doc.status = "ready"
     doc.engine = result.engine
@@ -219,3 +286,24 @@ def process_in_background(text_id: int, engine_name: str | None = None) -> None:
         target=process_text, args=(text_id, engine_name), daemon=True
     )
     thread.start()
+
+
+def _link_enclitics(session: Session, text_id: int, result: AnalysisResult) -> None:
+    """Rattache chaque enclitique detachee au mot qui la portait.
+
+    Le lien est pose apres l'insertion : les identifiants de tokens
+    n'existent qu'une fois les lignes ecrites.
+    """
+    rows = {
+        t.idx: t
+        for t in session.scalars(
+            select(TextToken).where(TextToken.text_id == text_id)
+        ).all()
+    }
+    for analysis in result.tokens:
+        if analysis.parent_token_index is None:
+            continue
+        child = rows.get(analysis.index)
+        parent = rows.get(analysis.parent_token_index)
+        if child is not None and parent is not None:
+            child.parent_token_id = parent.id

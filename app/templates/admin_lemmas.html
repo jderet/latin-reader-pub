@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}Lemmes{% endblock %}
+{% block content %}
+<section class="stack">
+  <h1>Lemmes</h1>
+  <p class="muted small">
+    Le lexique est le Gaffiot : {{ "{:,}".format(lexicon_size).replace(",", " ") }} lemmes,
+    homonymes distingués. Les traductions et les images écrites ici sont
+    visibles de tous les lecteurs ; chacun peut remplacer la traduction par
+    la sienne, mais pas l'image.
+  </p>
+
+  <form method="get" class="filters">
+    <input type="search" name="q" value="{{ q }}"
+           placeholder="Chercher un lemme, une vedette, une traduction">
+    <select name="filtre" onchange="this.form.submit()">
+      <option value="" {{ 'selected' if not filtre }}>tous</option>
+      <option value="sans_glose" {{ 'selected' if filtre == 'sans_glose' }}>sans traduction</option>
+      <option value="sans_image" {{ 'selected' if filtre == 'sans_image' }}>sans image</option>
+      <option value="image" {{ 'selected' if filtre == 'image' }}>avec image</option>
+    </select>
+    <label class="chk small">
+      <input type="checkbox" name="dans_textes" value="1"
+             {{ 'checked' if dans_textes }} onchange="this.form.submit()">
+      seulement ceux rencontrés dans les textes
+    </label>
+    <button type="submit">Filtrer</button>
+    <a href="/admin/lemmas" class="link">réinitialiser</a>
+  </form>
+
+  <p class="muted small">
+    {{ "{:,}".format(total).replace(",", " ") }} résultat(s) ·
+    page {{ page + 1 }} sur {{ pages }}
+  </p>
+
+  <ul class="wordlist">
+    {% for l in rows %}
+      <li class="word-row" data-lemma="{{ l.id }}">
+        <div class="word-line">
+          <b class="word-lemma">{{ l.headword or l.display }}</b>
+          {% if l.homonym_idx %}<span class="badge">{{ l.homonym_idx }}</span>{% endif %}
+          <span class="upos">{{ l.upos }}</span>
+          <span class="word-gloss">{{ l.shared_gloss or gaffiot_gloss(l.lemma, l.upos) or '—' }}</span>
+          {% if l.id in seen %}<span class="badge">dans les textes</span>{% endif %}
+          {% if l.image_path %}<img class="thumb" src="/media/{{ l.image_path }}" alt="">{% endif %}
+        </div>
+        <div class="word-edit" hidden>
+          <div class="word-fields">
+            <label>Traduction partagée
+              <input class="a-gloss" value="{{ l.shared_gloss or '' }}"
+                     placeholder="{{ gaffiot_gloss(l.lemma, l.upos) or 'traduction' }}">
+            </label>
+            <div class="row-buttons">
+              <button type="button" class="a-save">Enregistrer</button>
+              <span class="a-feedback muted small"></span>
+            </div>
+          </div>
+          <div class="word-image">
+            {% if l.image_path %}
+              <img src="/media/{{ l.image_path }}" alt="">
+              <button type="button" class="link danger a-img-del">retirer l'image</button>
+            {% else %}
+              <div class="dropzone">
+                <p class="muted small">Glissez une image,<br>ou collez avec <b>Cmd+V</b></p>
+                <label class="link">choisir un fichier
+                  <input type="file" class="a-img-file" accept="image/*" hidden></label>
+              </div>
+            {% endif %}
+          </div>
+        </div>
+      </li>
+    {% endfor %}
+  </ul>
+
+  {% if pages > 1 %}
+    <nav class="pager">
+      {% set base = '/admin/lemmas?q=' ~ q ~ '&filtre=' ~ filtre ~ '&dans_textes=' ~ dans_textes %}
+      {% if page > 0 %}<a href="{{ base }}&page={{ page - 1 }}">précédente</a>{% endif %}
+      <span class="muted small">{{ page + 1 }} / {{ pages }}</span>
+      {% if page + 1 < pages %}<a href="{{ base }}&page={{ page + 1 }}">suivante</a>{% endif %}
+    </nav>
+  {% endif %}
+
+  <h2>Ajouter un lemme absent du Gaffiot</h2>
+  <p class="muted small">
+    Pour les noms propres, le latin médiéval ou les mots que le dictionnaire
+    ignore. Ils sont consignés dans un fichier distinct de la source, et
+    survivent à une reconstruction du lexique.
+  </p>
+  <form method="post" action="/admin/lemmas/add" class="form" style="max-width:34rem">
+    <div class="row">
+      <label>Lemme <input name="key" required placeholder="Orgetorix"></label>
+      <label>Catégorie
+        <select name="upos">
+          <option value="PROPN">nom propre</option>
+          <option value="NOUN">nom</option>
+          <option value="VERB">verbe</option>
+          <option value="ADJ">adjectif</option>
+          <option value="ADV">adverbe</option>
+          <option value="X">autre</option>
+        </select>
+      </label>
+    </div>
+    <div class="row">
+      <label>Vedette <input name="headword" placeholder="Orgetorīx, īgis"></label>
+      <label>Traduction <input name="gloss" placeholder="chef helvète"></label>
+    </div>
+    <button type="submit">Ajouter</button>
+  </form>
+
+  <h2>Reconstruire le lexique</h2>
+  <p class="warn small">
+    Vide la table des lemmes et la refait depuis le Gaffiot. <b>Les statuts
+    et les fiches de tous les lecteurs sont effacés</b> : ils désignent des
+    identifiants de lemmes qui n'existeront plus. Les lemmes ajoutés à la
+    main sont conservés.
+  </p>
+  <form method="post" action="/admin/lexicon/rebuild"
+        onsubmit="return confirm('Reconstruire le lexique ? Tous les statuts et toutes les fiches des lecteurs seront effacés. Cette action est irréversible.')">
+    <button type="submit" class="danger-btn">Reconstruire depuis le Gaffiot</button>
+  </form>
+</section>
+<script src="/static/admin.js?v={{ asset_version }}"></script>
+{% endblock %}

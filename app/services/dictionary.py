@@ -1,13 +1,19 @@
 """Acces aux ressources lexicographiques.
 
-Deux fournisseurs :
-- `LocalDictionary` : fichier TSV embarque (data/dictionary.tsv), format
-  « cle_lemme <TAB> vedette <TAB> glose ». C'est la ou verser un import
-  de Whitaker's Words (domaine public) ou de Lewis & Short (CC BY-SA).
-  Le Gaffiot est CC BY-NC-SA : utilisable ici tant que l'usage reste
-  non commercial.
-- `LlmSuggester` : appel facultatif a l'API Anthropic pour proposer une
-  glose. Jamais enregistre automatiquement ; l'utilisateur valide.
+Le panneau de lecture interroge, dans cet ordre :
+
+- le **Gaffiot** : vedette, genre et glose francaise ;
+- les dictionnaires **StarDict** que l'utilisateur depose lui-meme dans
+  data/dictionaries ;
+- le lexique **Collatinus**, dictionnaire de lecture aux notices
+  breves, en complement du Gaffiot.
+
+Un petit fichier TSV ecrit a la main a longtemps servi d'amorce ; il a
+ete retire, ces trois sources le couvrant entierement.
+
+`LlmSuggester` reste un appel facultatif a l'API Anthropic pour proposer
+une glose. Elle n'est jamais enregistree automatiquement : l'utilisateur
+valide.
 """
 
 from __future__ import annotations
@@ -20,10 +26,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..nlp.normalize import lemma_key
+from . import stardict
 
 log = logging.getLogger(__name__)
 
-DEFAULT_DICT = Path(__file__).resolve().parents[2] / "data" / "dictionary.tsv"
+# Chaque sous-dossier contenant un .ifo est charge automatiquement.
+STARDICT_DIR = Path(__file__).resolve().parents[2] / "data" / "dictionaries"
 
 
 @dataclass(slots=True)
@@ -32,42 +40,6 @@ class DictEntry:
     headword: str
     body: str
     source: str
-
-
-class LocalDictionary:
-    def __init__(self, path: Path | None = None) -> None:
-        self.path = path or DEFAULT_DICT
-        self.entries: dict[str, list[DictEntry]] = {}
-        self._load()
-
-    def _load(self) -> None:
-        if not self.path.exists():
-            return
-        source = self.path.stem
-        for line in self.path.read_text(encoding="utf-8").splitlines():
-            line = line.rstrip("\n")
-            if not line.strip() or line.startswith("#"):
-                continue
-            parts = line.split("\t")
-            if len(parts) < 3:
-                continue
-            key = lemma_key(parts[0])
-            self.entries.setdefault(key, []).append(
-                DictEntry(key, parts[1], parts[2], source)
-            )
-
-    def lookup(self, lemma: str) -> list[DictEntry]:
-        return self.entries.get(lemma_key(lemma), [])
-
-
-_dictionary: LocalDictionary | None = None
-
-
-def get_dictionary() -> LocalDictionary:
-    global _dictionary
-    if _dictionary is None:
-        _dictionary = LocalDictionary()
-    return _dictionary
 
 
 # --------------------------------------------------------------------------
@@ -126,3 +98,157 @@ def suggest_gloss(lemma: str, context: str = "", *, timeout: float = 20.0) -> st
     except Exception:  # noqa: BLE001
         log.exception("suggestion de glose indisponible")
         return None
+
+
+# --------------------------------------------------------------------------
+# Dictionnaires StarDict de l'utilisateur
+# --------------------------------------------------------------------------
+_stardicts: list | None = None
+
+
+def get_stardicts(reload: bool = False):
+    """Dictionnaires StarDict trouves dans data/dictionaries/.
+
+    Charges une seule fois au premier appel : l'index reste en memoire,
+    les articles sont lus a la demande dans le fichier .dict.
+    """
+    global _stardicts
+    if _stardicts is None or reload:
+        _stardicts = stardict.discover(STARDICT_DIR)
+    return _stardicts
+
+
+def lookup_all(lemma: str, surface: str = "") -> list[dict]:
+    """Consulte toutes les sources : Gaffiot, Collatinus, puis StarDict.
+
+    On essaie le lemme, puis la forme telle qu'elle apparait dans le
+    texte : beaucoup de dictionnaires indexent aussi des formes flechies.
+    """
+    results: list[dict] = []
+
+    # Le Gaffiot n'apparait pas ici : sa glose, deja portee par le
+    # lemme, sert d'info-bulle et de proposition de traduction. La
+    # repeter dans les dictionnaires ferait doublon avec ce que le
+    # panneau affiche deja en tete.
+
+    # Collatinus : notices ecrites pour l'aide a la lecture, donc breves.
+    # Elles completent utilement le Gaffiot, dont un tiers des entrees
+    # n'a pas de glose exploitable.
+    courte = get_short_lexicon().get(lemma)
+    if courte:
+        results.append({"source": "Collatinus", "headword": lemma, "body": courte})
+
+    for dictionary in get_stardicts():
+        articles = dictionary.lookup(lemma)
+        matched = lemma
+        if not articles and surface and surface.lower() != lemma.lower():
+            articles = dictionary.lookup(surface)
+            matched = surface
+        for body in articles:
+            results.append(
+                {"source": dictionary.name, "headword": matched, "body": body}
+            )
+    return results
+
+
+def stardict_status() -> list[dict]:
+    """Etat des dictionnaires, pour la page de reglages."""
+    return [
+        {"name": d.name, "entries": len(d.index), "file": d.dict_path.name}
+        for d in get_stardicts()
+    ]
+
+
+# --------------------------------------------------------------------------
+# Collatinus : dictionnaire de lecture, aux notices breves
+# --------------------------------------------------------------------------
+SHORT_GLOSS = Path(__file__).resolve().parents[2] / "data" / "short_gloss.tsv.gz"
+
+
+class ShortLexicon:
+    """Dictionnaire de lecture : des traductions d'un ou deux mots.
+
+    Source : Collatinus (Ouvrard & Verkerk), GPL. Voir data/SOURCES.md.
+
+    Il sert au lecteur, et a lui seul : dans la section « Dictionnaires »
+    du panneau, et dans l'info-bulle en complement du Gaffiot. Il n'entre
+    pas dans l'arbitrage des lemmes, ou seule la base de reference fait
+    autorite.
+    """
+
+    def __init__(self, path: Path | None = None) -> None:
+        self.path = path or SHORT_GLOSS
+        self.entries: dict[str, str] = {}
+        self._load()
+
+    def _load(self) -> None:
+        import gzip
+
+        if not self.path.exists():
+            log.info("lexique court absent (%s)", self.path)
+            return
+        with gzip.open(self.path, "rt", encoding="utf-8") as fh:
+            for line in fh:
+                if not line.strip() or line.startswith("#"):
+                    continue
+                key, _, gloss = line.rstrip("\n").partition("\t")
+                if gloss:
+                    self.entries[key] = gloss
+        log.info("lexique court : %d entrées", len(self.entries))
+
+    @property
+    def available(self) -> bool:
+        return bool(self.entries)
+
+    def get(self, lemma: str) -> str:
+        return self.entries.get(lemma_key(lemma), "")
+
+
+_short: ShortLexicon | None = None
+
+
+def get_short_lexicon() -> ShortLexicon:
+    global _short
+    if _short is None:
+        _short = ShortLexicon()
+    return _short
+
+
+def short_gloss(lemma: str, upos: str | None = None) -> str:
+    """Traduction courte, pour l'info-bulle.
+
+    Le Gaffiot d'abord : c'est la base de reference, et ses notices sont
+    celles que l'on retrouve dans le panneau. Collatinus prend le relais
+    pour les mots qu'il ne glose pas — pres d'un tiers des entrees.
+    """
+    from .gaffiot import get_gaffiot
+
+    notice = get_gaffiot().gloss(lemma, upos)
+    if notice:
+        return _trim(notice)
+    return get_short_lexicon().get(lemma)
+
+
+TOOLTIP_MAX = 38
+
+
+def _trim(texte: str) -> str:
+    """Raccourcit une notice pour l'info-bulle.
+
+    Le panneau lateral affiche la notice entiere ; sous un mot du texte,
+    elle deborderait. On coupe au premier sens, puis a un mot entier.
+    """
+    premier = texte.split(" ; ")[0].strip()
+    if len(premier) <= TOOLTIP_MAX:
+        return premier
+    coupe = premier[:TOOLTIP_MAX].rsplit(" ", 1)[0]
+    return (coupe or premier[:TOOLTIP_MAX]).rstrip(" ,;:") + "…"
+
+
+def short_lexicon_status() -> dict:
+    lexicon = get_short_lexicon()
+    return {
+        "available": lexicon.available,
+        "entries": len(lexicon.entries),
+        "source": "Collatinus (Ouvrard & Verkerk) — GNU GPL",
+    }

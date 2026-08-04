@@ -1,4 +1,4 @@
-"""Moteur de repli : lexique embarque + regles de terminaison.
+"""Moteur de repli : regles de terminaison.
 
 Il n'est pas contextuel. Il existe pour trois raisons :
 1. l'application est utilisable des l'installation, sans telecharger
@@ -6,22 +6,27 @@ Il n'est pas contextuel. Il existe pour trois raisons :
 2. il sert de filet quand Stanza ou CLTK ne rendent aucun candidat ;
 3. il rend les tests reproductibles et rapides.
 
-Format du lexique (data/lexicon.tsv, sans en-tete) :
-    forme_normalisee <TAB> lemme <TAB> upos <TAB> feats <TAB> poids
-`feats` suit la convention UD : Case=Nom|Number=Sing
-Plusieurs lignes par forme = plusieurs candidats.
+Il proposait autrefois un petit lexique ecrit a la main, taille pour un
+seul passage de Cesar. Ce lexique a ete retire : la table des formes
+attestees (865 000 tokens des treebanks) et la liste de lemmes du Gaffiot
+le remplacent avantageusement, et `filter_invented_lemmas` les consulte
+apres coup. Ne subsistent ici que les regles de terminaison, qui ont
+l'interet de porter l'analyse morphologique — la personne, le cas, le
+temps — qu'aucune des deux autres ressources ne fournit.
 """
 
 from __future__ import annotations
 
-from collections import defaultdict
-from pathlib import Path
-
-from .base import AnalysisResult, LemmaCandidate, TokenAnalysis, apply_preferences
+from .base import (
+    AnalysisResult,
+    LemmaCandidate,
+    TokenAnalysis,
+    apply_preferences,
+    filter_invented_lemmas,
+)
+from .enclitics import split_enclitics
 from .normalize import form_key, is_word
 from .tokenizer import tokenize
-
-DEFAULT_LEXICON = Path(__file__).resolve().parents[2] / "data" / "lexicon.tsv"
 
 # Regles de repli, appliquees quand la forme est inconnue du lexique.
 # (suffixe, suffixe de remplacement pour le lemme, upos, feats, poids)
@@ -64,43 +69,23 @@ def parse_feats(raw: str) -> dict[str, str]:
     return out
 
 
-def load_lexicon(path: Path | None = None) -> dict[str, list[LemmaCandidate]]:
-    path = path or DEFAULT_LEXICON
-    table: dict[str, list[LemmaCandidate]] = defaultdict(list)
-    if not path.exists():
-        return table
-    for line in path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        parts = line.split("\t")
-        if len(parts) < 4:
-            continue
-        key, lemma, upos, feats = parts[0], parts[1], parts[2], parts[3]
-        weight = float(parts[4]) if len(parts) > 4 else 1.0
-        table[form_key(key)].append(
-            LemmaCandidate(lemma=lemma, upos=upos, feats=parse_feats(feats), score=weight)
-        )
-    for cands in table.values():
-        cands.sort(key=lambda c: -c.score)
-    return dict(table)
-
-
 class LexiconLemmatizer:
     """Moteur non contextuel, toujours disponible."""
 
     name = "lexicon"
     version = "1.0"
 
-    def __init__(self, path: Path | None = None) -> None:
-        self.table = load_lexicon(path)
+    def __init__(self) -> None:
+        pass
 
     def candidates_for(self, key: str) -> list[LemmaCandidate]:
-        if key in self.table:
-            return [
-                LemmaCandidate(c.lemma, c.upos, dict(c.feats), c.score)
-                for c in self.table[key]
-            ]
+        """Devine par la terminaison.
+
+        Les lemmes ainsi formes sont souvent faux ; c'est
+        `filter_invented_lemmas` qui les confronte ensuite aux formes
+        attestees et aux listes de reference. L'apport propre de ces
+        regles est l'analyse morphologique qu'elles portent.
+        """
         guesses: list[LemmaCandidate] = []
         for suffix, replacement, upos, feats, weight in SUFFIX_RULES:
             if key.endswith(suffix) and len(key) > len(suffix) + 1:
@@ -134,5 +119,7 @@ class LexiconLemmatizer:
                     is_word=word,
                 )
             )
+        tokens = split_enclitics(tokens)
         apply_preferences(tokens)
+        filter_invented_lemmas(tokens)
         return AnalysisResult(self.name, self.version, tokens)

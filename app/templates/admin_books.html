@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}Livres{% endblock %}
+{% block content %}
+<section class="stack">
+  <h1>Livres</h1>
+  <p class="muted small">
+    Un livre est un recueil ordonné : chaque texte en est un chapitre numéroté.
+  </p>
+
+  <h2>Ajouter un livre</h2>
+  <details class="importer" {% if not books %}open{% endif %}>
+    <summary>Nouveau livre</summary>
+    <form method="post" action="/admin/books" class="form">
+      <div class="row">
+        <label>Titre <input name="title" required placeholder="De bello Gallico"></label>
+        <label>Sous-titre <input name="subtitle" placeholder="Guerre des Gaules"></label>
+      </div>
+      <div class="row">
+        <label>Auteur <input name="author" placeholder="Jules César"></label>
+        <label>Époque <input name="era" placeholder="Ier siècle av. J.-C."></label>
+        <label>Traducteur <input name="translator" placeholder="si applicable"></label>
+      </div>
+      <label>Présentation <textarea name="description" rows="2"></textarea></label>
+      <button type="submit">Créer</button>
+    </form>
+  </details>
+
+  <h2>Catalogue</h2>
+  {% if not books %}<p class="muted">Aucun livre pour le moment.</p>{% endif %}
+
+  <ul class="booklist">
+    {% for b in books %}
+      <li class="book-row" data-book="{{ b.id }}">
+        <div class="book-cover-cell">
+          {% if b.cover_path %}
+            <img src="/media/{{ b.cover_path }}" alt="">
+          {% else %}
+            <div class="cover-placeholder">{{ b.title[:1] }}</div>
+          {% endif %}
+          <label class="link small">changer
+            <input type="file" class="cover-file" accept="image/*" hidden></label>
+        </div>
+
+        <div class="book-main">
+          <form method="post" action="/admin/books/{{ b.id }}" class="form compact">
+            <div class="row">
+              <label>Titre <input name="title" value="{{ b.title }}" required></label>
+              <label>Sous-titre <input name="subtitle" value="{{ b.subtitle or '' }}"></label>
+            </div>
+            <div class="row">
+              <label>Auteur <input name="author" value="{{ b.author or '' }}"></label>
+              <label>Époque <input name="era" value="{{ b.era or '' }}"></label>
+              <label>Traducteur <input name="translator" value="{{ b.translator or '' }}"></label>
+            </div>
+            <label>Présentation
+              <textarea name="description" rows="2">{{ b.description or '' }}</textarea></label>
+            <div class="row-buttons">
+              <button type="submit">Enregistrer</button>
+              <span class="muted small">{{ b.texts|length }} chapitre(s)</span>
+            </div>
+          </form>
+
+          <ol class="chapters">
+            {% for t in b.texts %}
+              <li>
+                <span class="chapter-num">{{ t.chapter_idx }}</span>
+                <a href="/admin/texts/{{ t.id }}">{{ t.chapter_label or t.title }}</a>
+                <span class="muted small">{{ t.word_count }} mots</span>
+                <form method="post" action="/api/admin/texts/{{ t.id }}/book" class="inline detach">
+                  <input type="hidden" name="book_id" value="">
+                  <button class="link">détacher</button>
+                </form>
+              </li>
+            {% endfor %}
+          </ol>
+        </div>
+
+        <div class="book-actions">
+          <form method="post" action="/admin/books/{{ b.id }}/delete"
+                onsubmit="return confirm('Supprimer ce livre ? Les textes seront détachés, non supprimés.')">
+            <button class="link danger">supprimer</button>
+          </form>
+        </div>
+      </li>
+    {% endfor %}
+  </ul>
+
+  <h2>Textes non rattachés</h2>
+  {% if not orphans %}<p class="muted small">Tous les textes appartiennent à un livre.</p>{% endif %}
+  <ul class="texts">
+    {% for t in orphans %}
+      <li>
+        <div class="text-head"><b>{{ t.title }}</b>
+          <span class="muted small right">{{ t.word_count }} mots</span></div>
+        <form method="post" action="/api/admin/texts/{{ t.id }}/book" class="attach inline">
+          <select name="book_id" required>
+            <option value="">— choisir un livre —</option>
+            {% for b in books %}<option value="{{ b.id }}">{{ b.title }}</option>{% endfor %}
+          </select>
+          <input type="number" name="chapter_idx" value="{{ loop.index }}" min="0"
+                 style="width:4.5rem" title="numéro de chapitre">
+          <input name="chapter_label" placeholder="intitulé du chapitre" style="width:12rem">
+          <button type="submit">Rattacher</button>
+        </form>
+      </li>
+    {% endfor %}
+  </ul>
+</section>
+<script src="/static/books.js?v={{ asset_version }}"></script>
+{% endblock %}

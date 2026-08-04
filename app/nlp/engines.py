@@ -10,8 +10,15 @@ from __future__ import annotations
 
 import logging
 
-from .base import AnalysisResult, LemmaCandidate, TokenAnalysis, apply_preferences
+from .base import (
+    AnalysisResult,
+    LemmaCandidate,
+    TokenAnalysis,
+    apply_preferences,
+    filter_invented_lemmas,
+)
 from .lexicon_engine import LexiconLemmatizer
+from .enclitics import split_enclitics
 from .normalize import form_key, is_word
 from .tokenizer import tokenize
 
@@ -83,7 +90,9 @@ class StanzaLemmatizer:
                     )
                 )
                 idx += 1
+        tokens = split_enclitics(tokens)
         apply_preferences(tokens)
+        filter_invented_lemmas(tokens)
         return AnalysisResult(self.name, f"{self.version}/{self.package}", tokens)
 
 
@@ -138,7 +147,9 @@ class CltkLemmatizer:
                     is_word=is_word(raw.surface),
                 )
             )
+        tokens = split_enclitics(tokens)
         apply_preferences(tokens)
+        filter_invented_lemmas(tokens)
         return AnalysisResult(self.name, self.version, tokens)
 
 

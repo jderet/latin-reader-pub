@@ -2,19 +2,37 @@
 {% block title %}{{ doc.title }}{% endblock %}
 {% block content %}
 <style>
-  main { max-width: 1560px; }
+  /*
+    UNE SEULE AUTORITÉ SUR LA LARGEUR.
+    ---------------------------------
+    Tout se déduit de trois mesures posées ici, et de rien d'autre :
+
+      --ligne    longueur de ligne, en caractères
+      --marge    gouttière d'images, de chaque côté
+      --panneau  largeur de la colonne du panneau
+
+    La grille est symétrique — `1fr auto 1fr` — si bien que la colonne de
+    texte reste centrée dans la fenêtre, que le panneau soit ouvert ou
+    fermé. Rien ne se recompose au clic : le panneau occupe la marge de
+    droite, déjà réservée.
+
+    Le script ne mesure plus aucune largeur. Il ne calcule que la
+    position verticale des images, une fois au chargement et au
+    redimensionnement.
+  */
+  .reading {
+    --ligne: {{ prefs.line_chars }}ch;
+    --marge: {% if has_images %}{{ prefs.image_columns * (prefs.image_size + 10) + 16 }}{% else %}0{% endif %}px;
+    --panneau: 340px;
+    --image: {{ prefs.image_size }}px;
+    --image-large: {{ [prefs.image_zoom_size, prefs.image_columns * (prefs.image_size + 10)]|min }}px;
+  }
   .text-body {
     font-family: {{ prefs.font_stack }};
     font-size: {{ prefs.font_size }}%;
     line-height: {{ prefs.line_height }}%;
-    max-width: {{ prefs.text_width }}px;
     {% if prefs.justify %}text-align: justify;{% endif %}
   }
-  .text-stage {
-    --gutter: {{ prefs.image_columns * (prefs.image_size + 10) + 16 }}px;
-    --zoom: {% if prefs.image_zoom %}{{ ([prefs.image_zoom_size, prefs.image_columns * (prefs.image_size + 10)]|min / prefs.image_size)|round(2) }}{% else %}1{% endif %};
-  }
-  .margin-image { width: {{ prefs.image_size }}px; }
   {% if not prefs.image_captions %}.margin-image figcaption { display: none; }{% endif %}
   {% if not prefs.show_colors %}
   .text-body .w.s1, .text-body .w.s2, .text-body .w.s3, .text-body .w.s4 { background: none; }
@@ -28,25 +46,113 @@
     filter: saturate({{ prefs.color_intensity }}%);
   }
   {% endif %}
+
+  /*
+    Deux seuils, calculés ici à partir des mêmes mesures, et nulle part
+    ailleurs. La dégradation est progressive : centrer le texte dans la
+    fenêtre impose des marges égales de part et d'autre, donc de réserver
+    à gauche autant de place que le panneau en prend à droite. Sur un
+    écran de portable, gouttières d'images et colonne de panneau ne
+    tiennent pas ensemble ; on renonce d'abord aux premières, qui sont un
+    agrément, jamais au second, qui est un outil de travail.
+
+    Le calcul suppose une largeur de caractère d'environ 0,5 em.
+  */
+  {% set ligne_px = (prefs.line_chars * prefs.font_size * 0.08)|round|int %}
+  {% set marge_px = (prefs.image_columns * (prefs.image_size + 10) + 16)
+                     if has_images else 0 %}
+
+  /* Plus de place pour les gouttières : les images passent dans le flux. */
+  @media (max-width: {{ ligne_px + 2 * marge_px + 2 * 340 }}px) {
+    .reading { --marge: 0px; }
+  }
+  /* Plus de place pour la colonne du panneau : tout descend dans le flux. */
+  @media (max-width: {{ ligne_px + 2 * 340 }}px) {
+    .reading { --panneau: 0px; }
+  }
 </style>
 <script>
   window.READER_DATA = {
     textId: {{ doc.id }},
     page: {{ page }},
     unseenCount: {{ unseen_count }},
+    pageRead: {{ 'true' if page_read else 'false' }},
     images: {{ image_targets|tojson }},
-    prefs: {{ prefs|tojson }}
+    prefs: {{ prefs|tojson }},
+    videoId: {{ (video_id or '')|tojson }},
+    audio: {{ (audio_path or '')|tojson }},
+    cues: {{ cues|tojson }}
   };
 </script>
-<div class="reader" x-data="reader()" x-init="root = $el; init()"
+<div class="reading" x-data="reader()" x-init="root = $el; init()"
      @keydown.window="onKey($event)">
+<div class="reader">
   <div class="reader-main">
+    {% if audio_path %}
+    <div class="audio-holder">
+      <audio x-ref="audio" src="/audio/{{ audio_path }}" preload="metadata" controls></audio>
+      <p class="audio-bar muted small">
+        <label class="chk small">Vitesse
+          <select x-model="audioSpeed" @change="applyAudioSpeed()">
+            <option value="0.6">0,6 ×</option>
+            <option value="0.75">0,75 ×</option>
+            <option value="0.9">0,9 ×</option>
+            <option value="1">1 ×</option>
+            <option value="1.2">1,2 ×</option>
+          </select>
+        </label>
+        <label class="chk small">
+          <input type="checkbox" x-model="loopSegment"> répéter le segment
+        </label>
+        <label class="chk small">
+          <input type="checkbox" x-model="follow"> suivre le texte
+        </label>
+        <span class="muted align-state" x-cloak
+              x-text="aligned
+                ? (alignedCount === cues.length
+                    ? `— ${cues.length} segments alignés`
+                    : `— ${alignedCount} segments alignés sur ${cues.length}`)
+                : '— enregistrement non aligné : pas de surbrillance'"></span>
+      </p>
+    </div>
+  {% endif %}
+
+  {% if video_id %}
+    <div class="video-holder" x-ref="video">
+      <div class="video-frame">
+        <iframe id="yt-player"
+                src="https://www.youtube-nocookie.com/embed/{{ video_id }}?enablejsapi=1&amp;rel=0&amp;modestbranding=1&amp;playsinline=1"
+                title="{{ doc.title }}"
+                allow="accelerometer; autoplay; encrypted-media; picture-in-picture"
+                allowfullscreen loading="lazy"></iframe>
+      </div>
+    </div>
+  {% endif %}
+
     <div class="reader-head">
-      <h1>{{ doc.title }}</h1>
+      <div class="head-line">
+        <h1>{{ doc.title }}</h1>
+        {% if page_coverage.total %}
+          {% set part = (page_coverage.known_ratio * 100)|round %}
+          <div class="page-gauge" role="img"
+               aria-label="{{ part }} % du vocabulaire de cette page déjà connu">
+            <div class="gauge">
+              {% for tranche in page_coverage.spectrum %}
+                <span class="g-{{ tranche.key }}" style="width: {{ tranche.share }}%"
+                      title="{{ tranche.label }} — {{ tranche.count }} mots"></span>
+              {% endfor %}
+            </div>
+            <p class="gauge-legend small">
+              <b class="{{ 'ready' if part >= 90 else ('near' if part >= 70 else '') }}">{{ part }} %</b>
+              <span class="muted">de cette page</span>
+            </p>
+          </div>
+        {% endif %}
+      </div>
       <p class="muted small">
         {% if doc.author %}{{ doc.author }} · {% endif %}
         {{ doc.word_count }} mots ·
-        {% if coverage %}{{ (coverage.known_ratio * 100)|round(1) }} % connus ·{% endif %}
+        {% if doc.page_count > 1 %}{{ pages_read }}/{{ doc.page_count }} pages lues ·{% endif %}
         {{ pending }} ambiguïtés signalées ·
         moteur {{ doc.engine }} {{ doc.engine_version }}
       </p>
@@ -57,19 +163,21 @@
       {% endif %}
     </div>
 
+    {% if prefs.show_help %}
     <p class="legend">
       <span class="w unseen">jamais vu</span><span class="w s4">4 inconnu</span>
       <span class="w s3">3</span><span class="w s2">2</span>
       <span class="w s1">1</span><span class="w s0">0 maîtrisé</span>
       <span class="w ambiguous">ambigu</span>
     </p>
+    {% endif %}
 
     <div class="text-stage" x-ref="stage" :class="layoutMode">
       <div class="margin-layer">
         <template x-for="img in placed" :key="img.token_id">
           <figure class="margin-image" :class="[img.side, focusedLemma == img.lemma_id ? 'active' : '']"
                   :data-for="img.token_id" :data-lemma="img.lemma_id"
-                  :style="`top:${img.top}px; ${img.side}:${img.offset}px`"
+                  :style="`top:${img.top}px; ${img.side === 'left' ? 'right' : 'left'}:calc(100% - ${img.inner}px)`"
                   @click="open(img.token_id)">
             <img :src="img.url" :alt="img.alt" loading="lazy">
             <figcaption>
@@ -83,11 +191,13 @@
       <div class="text-body" x-ref="body">
         {%- for item in tokens -%}
           {%- if item.t.is_word -%}
-            <span class="w{% if item.status is not none %} s{{ item.status }}{% elif item.unseen %} unseen{% endif %}{% if item.ignored %} ignored{% endif %}{% if item.ambiguous %} ambiguous{% endif %}"
+<span class="w{% if item.status is not none %} s{{ item.status }}{% elif item.unseen %} unseen{% endif %}{% if item.ignored %} ignored{% endif %}{% if item.ambiguous %} ambiguous{% endif %}{% if item.enclitic %} enclitic{% endif %}"
                   data-token="{{ item.t.id }}"
                   data-lemma="{{ item.t.chosen_lemma_id or '' }}"
+                  data-cs="{{ item.t.char_start }}"
+                  tabindex="-1"
                   @click="open({{ item.t.id }})"
-                  title="{{ item.lemma.display if item.lemma else '' }}">{{ item.t.surface }}</span>
+                  >{{ item.t.surface }}{% if item.tip %}<span class="tip" aria-hidden="true"><b>{{ item.lemma.display if item.lemma else '' }}</b>{{ item.tip }}</span>{% elif item.lemma %}<span class="tip" aria-hidden="true"><b>{{ item.lemma.display }}</b></span>{% endif %}</span>
           {%- else -%}
             <span class="punct">{{ item.t.surface }}</span>
           {%- endif -%}
@@ -97,15 +207,19 @@
     </div>
 
     {% if prefs.show_validate_bar %}
-    <div class="validate-bar" x-show="unseenCount > 0" x-cloak>
-      <p class="muted small">
-        <b x-text="unseenCount"></b> mot(s) jamais rencontré(s) sur cette page, affichés en bleu.
-      </p>
-      <button class="validate" @click="validateUnseen()" :disabled="validating">
-        <span x-show="!validating">Je connais déjà tous les mots bleus de cette page</span>
-        <span x-show="validating" x-cloak>Validation…</span>
+    <div class="read-bar">
+      <button class="validate" @click="markPageRead()" :disabled="validating"
+              :class="{ done: pageRead }">
+        <span x-show="!validating">
+          <template x-if="!pageRead">J'ai lu la page</template>
+          <template x-if="pageRead">Page lue — relire</template>
+        </span>
+        <span x-show="validating" x-cloak>Enregistrement…</span>
       </button>
-      <p class="muted small">Ils passeront au statut 0 (maîtrisé). Les noms propres sont exclus.</p>
+      <p class="muted small" x-show="unseenCount > 0" x-cloak>
+        <b x-text="unseenCount"></b> mot(s) jamais rencontré(s) sur cette page,
+        affichés en bleu.
+      </p>
     </div>
     {% endif %}
 
@@ -119,12 +233,16 @@
   </div>
 
   <aside class="panel" :class="{ open: panel }">
-    <button class="close" @click="panel = false" aria-label="Fermer">×</button>
-    <div x-html="panelHtml"></div>
-    <p class="muted small kbd">
-      Raccourcis : <b>4 3 2 1 0</b> statut · <b>i</b> ignorer · <b>f</b> créer une fiche · <b>Échap</b> fermer
-    </p>
+    <button class="close" @click="deselect()" aria-label="Fermer">×</button>
+    <div x-html="panelHtml" class="panel-fade" :class="{ fading: panelFading }"></div>
+    {% if prefs.show_help %}
+      <p class="muted small kbd">
+        Raccourcis : <b>4 3 2 1 0</b> statut · <b>i</b> ignorer ·
+        <b>f</b> créer une fiche · <b>← →</b> mot · <b>Échap</b> fermer
+      </p>
+    {% endif %}
   </aside>
+</div>
 </div>
 <script src="/static/reader.js?v={{ asset_version }}"></script>
 {% endblock %}

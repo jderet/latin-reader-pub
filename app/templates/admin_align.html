@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Aligner — {{ doc.title }}{% endblock %}
+{% block content %}
+<script>
+  window.ALIGN_DATA = {
+    textId: {{ doc.id }},
+    audio: {{ (doc.audio_path or '')|tojson }},
+    segments: {{ segments|tojson }}
+  };
+</script>
+<section class="stack align-editor" x-data="aligner()" x-init="root = $el; init()"
+         @keydown.window="onKey($event)">
+  <h1>Aligner « {{ doc.title }} »</h1>
+
+  {% if not doc.audio_path %}
+    <p class="muted small">
+      Attachez un enregistrement au format MP3 ou M4A, jusqu'à 50 Mo.
+      Le texte sera découpé en segments d'environ une demi-phrase, que vous
+      alignerez ensuite.
+    </p>
+    <div class="dropzone audio-drop">
+      <label class="link">choisir un fichier
+        <input type="file" id="audio-file" accept="audio/mpeg,audio/mp4,.mp3,.m4a" hidden>
+      </label>
+    </div>
+  {% else %}
+    <p class="muted small">
+      <b>{{ segments|length }}</b> segment(s), {{ coverage }} % alignés ·
+      <button class="link" id="audio-remove">retirer l'enregistrement</button>
+    </p>
+    <div class="align-player">
+      <audio x-ref="audio" src="/audio/{{ doc.audio_path }}" preload="metadata" controls></audio>
+      <div class="align-controls">
+        <label class="small">Vitesse
+          <select x-model="speed" @change="applySpeed()">
+            <option value="0.5">0,5 ×</option>
+            <option value="0.65">0,65 ×</option>
+            <option value="0.8">0,8 ×</option>
+            <option value="1">1 ×</option>
+            <option value="1.25">1,25 ×</option>
+          </select>
+        </label>
+        <span class="muted small" x-text="`${aligned} / ${segments.length} segments alignés`"></span>
+      </div>
+    </div>
+
+    <div class="align-tap">
+      <p class="muted small">
+        <b>Frappe au rythme.</b> Lancez la lecture, puis pressez la
+        <b>barre d'espace</b> au début de chaque segment surligné.
+        Ralentissez si nécessaire. Vous retoucherez les bornes ensuite.
+      </p>
+      <div class="row-buttons">
+        <button @click="startTapping()" x-show="!tapping">Commencer la frappe</button>
+        <button @click="finishTapping()" x-show="tapping" x-cloak class="danger-btn">
+          Terminer et enregistrer (<span x-text="taps.length"></span> relevés)
+        </button>
+        <button class="link" @click="cancelTapping()" x-show="tapping" x-cloak>annuler</button>
+        <button class="link danger" @click="resetSegments()" x-show="!tapping">
+          redécouper le texte
+        </button>
+      </div>
+      <p class="notice small" x-show="tapping" x-cloak>
+        Segment attendu : <b x-text="(segments[taps.length] || {}).text || '— fin —'"></b>
+      </p>
+    </div>
+
+    <ol class="segments">
+      {% for s in segments %}
+        <li data-index="{{ s.index }}" :class="{ playing: playing === {{ s.index }} }">
+          <span class="seg-text">{{ s.text }}</span>
+          <span class="seg-times">
+            <input type="number" step="0.05" min="0" class="seg-start"
+                   value="{{ '%.2f'|format(s.start) if s.start is not none else '' }}"
+                   placeholder="début">
+            <input type="number" step="0.05" min="0" class="seg-end"
+                   value="{{ '%.2f'|format(s.end) if s.end is not none else '' }}"
+                   placeholder="fin">
+          </span>
+          <span class="seg-actions">
+            <button class="link seg-play" title="Écouter ce segment">écouter</button>
+            <button class="link seg-here" title="Poser le début à la position actuelle">
+              caler ici
+            </button>
+            <button class="link seg-merge" title="Fusionner avec le suivant">fusionner</button>
+          </span>
+        </li>
+      {% endfor %}
+    </ol>
+  {% endif %}
+
+  <p><a href="/admin">retour au tableau de bord</a></p>
+</section>
+<script src="/static/align.js?v={{ asset_version }}"></script>
+{% endblock %}

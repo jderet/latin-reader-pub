@@ -125,3 +125,133 @@ def apply_preferences(tokens: Sequence[TokenAnalysis], margin: float = 0.15) -> 
                         tok.candidates[0].score, tok.candidates[1].score + 0.001
                     )
                 break
+
+
+def _invariable_only(categories, invariables) -> bool:
+    """Ce lemme n'est-il connu que sous des categories invariables ?
+
+    Une categorie inconnue — ensemble vide — ne permet pas de conclure :
+    la traiter comme invariable ecarterait tous les lemmes que le
+    dictionnaire ne classe pas.
+    """
+    return bool(categories) and set(categories) <= invariables
+
+
+def _dedupe(candidates: list) -> list:
+    """Un meme lemme ne doit figurer qu'une fois dans la liste d'arbitrage.
+
+    Les differentes categories d'un meme lemme (« cano » nom, verbe et nom
+    propre) produiraient sinon trois entrees identiques a l'ecran.
+    """
+    best: dict[str, LemmaCandidate] = {}
+    for cand in candidates:
+        key = _bare(cand.lemma)
+        current = best.get(key)
+        if current is None or cand.score > current.score:
+            best[key] = cand
+    return sorted(best.values(), key=lambda c: -c.score)
+
+
+def filter_invented_lemmas(tokens: Sequence[TokenAnalysis]) -> int:
+    """Ecarte les candidats dont le lemme n'existe pas.
+
+    Les moteurs qui devinent par terminaison produisent des lemmes
+    inexistants (« abuteo », « quus »). On les confronte a une liste de
+    reference ; un token dont tous les candidats sont ecartes conserve le
+    meilleur, marque comme devine, pour ne jamais laisser un mot sans
+    analyse.
+    """
+    from ..services.lemma_reference import filter_candidates, get_reference
+
+    if not get_reference().available:
+        return 0
+
+    from ..services.lemma_reference import attested_readings, propose
+
+    removed_total = 0
+    for tok in tokens:
+        if not tok.is_word or not tok.candidates:
+            continue
+
+        # 1. Autorite la plus forte : la forme est-elle attestee dans un
+        #    corpus annote a la main ? Si oui, ces lectures priment.
+        attested = attested_readings(tok.form_key)
+        if attested:
+            known = {lemma for lemma, _, _ in attested}
+            merged = []
+            for lemma, upos, score in attested:
+                merged.append(LemmaCandidate(lemma=lemma, upos=upos, feats={}, score=score))
+            # On conserve l'analyse morphologique du moteur quand il
+            # s'accorde avec le corpus : elle est plus riche.
+            for cand in tok.candidates:
+                bare = _bare(cand.lemma)
+                if bare in known:
+                    for m in merged:
+                        if _bare(m.lemma) == bare and cand.feats:
+                            m.feats = cand.feats
+                else:
+                    # Le corpus ne connait pas cette lecture. On la garde si
+                    # le lemme existe — un moteur contextuel peut avoir
+                    # raison sur un usage rare, et l'utilisateur doit
+                    # pouvoir arbitrer — mais nettement en retrait.
+                    #
+                    # Un mot invariable est ecarte sans discussion : « una »,
+                    # adverbe, ne peut pas etre le lemme de « unam ».
+                    from ..services.lemma_reference import (
+                        INDECLINABLE,
+                        get_reference,
+                    )
+
+                    reference = get_reference()
+                    invariable = (
+                        _bare(cand.lemma) != tok.form_key
+                        and (
+                            cand.upos in INDECLINABLE
+                            or _invariable_only(
+                                reference.entries.get(_bare(cand.lemma)),
+                                INDECLINABLE,
+                            )
+                        )
+                    )
+                    if not invariable and reference.knows(cand.lemma):
+                        merged.append(
+                            LemmaCandidate(
+                                cand.lemma, cand.upos, cand.feats,
+                                min(cand.score, 0.45),
+                            )
+                        )
+                    else:
+                        removed_total += 1
+            tok.candidates = _dedupe(merged)[:5]
+            continue
+
+        # 2. Forme inconnue des corpus : on ecarte les lemmes inexistants…
+        kept, removed = filter_candidates(tok.candidates, keep_minimum=False)
+        removed_total += removed
+
+        # …et on complete par les lemmes attestes compatibles avec la forme.
+        known = {_bare(c.lemma) for c in kept}
+        extra = [
+            LemmaCandidate(lemma=lemma, upos=upos, feats={}, score=score)
+            for lemma, upos, score in propose(tok.form_key)
+            if _bare(lemma) not in known
+        ]
+
+        if kept:
+            # Le plafond ne vaut que si le moteur est sur de lui. Applique
+            # sans condition, il bridait une proposition solide — la forme
+            # elle-meme, attestee comme lemme — sous une simple devinette
+            # par terminaison : « tres » cedait ainsi la place a « tris ».
+            if kept[0].score >= 0.5:
+                ceiling = kept[0].score * 0.95
+                for cand in extra:
+                    cand.score = min(cand.score, ceiling)
+            tok.candidates = _dedupe(kept + extra)[:5]
+        elif extra:
+            tok.candidates = _dedupe(extra)[:5]
+        else:
+            # Rien d'atteste : on conserve le meilleur, signale comme
+            # devine, pour ne jamais laisser un mot sans analyse.
+            tok.candidates = tok.candidates[:1]
+            tok.candidates[0].score = min(tok.candidates[0].score, 0.15)
+    return removed_total

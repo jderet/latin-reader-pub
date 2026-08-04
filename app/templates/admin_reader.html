@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}{{ doc.title }} — arbitrage{% endblock %}
+{% block content %}
+<script>
+  window.ADMIN_READER = { textId: {{ doc.id }}, page: {{ page }} };
+</script>
+<div class="reader admin-reader" x-data="adminReader()" x-init="root = $el; init()"
+     @keydown.window="onKey($event)">
+  <div class="reader-main">
+    <div class="reader-head">
+      <h1>{{ doc.title }}</h1>
+      <p class="muted small">
+        {% if doc.author %}{{ doc.author }} · {% endif %}
+        {{ doc.word_count }} mots ·
+        <b>{{ ambiguous_count }}</b> mot(s) à plusieurs lemmes,
+        dont {{ resolved_count }} déjà tranché(s) ·
+        moteur {{ doc.engine }}
+      </p>
+      <p class="notice small">
+        <b>←</b> et <b>→</b> passent d'un mot ambigu à l'autre.
+        <b>↑</b> et <b>↓</b> choisissent le lemme, enregistré aussitôt.
+        Un mot tranché reste dans le parcours ; l'ambiguïté disparaît en revanche
+        pour les lecteurs.
+      </p>
+    </div>
+
+    <div class="text-stage">
+      <div class="text-body admin-body">
+        {%- for item in tokens -%}
+          {%- if item.t.is_word -%}
+            <span class="w{% if item.multiple %} multi{% endif %}{% if item.t.is_resolved %} resolved{% endif %}{% if item.flagged %} flagged{% endif %}{% if item.ignored %} ignored{% endif %}{% if item.t.is_enclitic %} enclitic{% endif %}"
+                  data-token="{{ item.t.id }}"
+                  data-multi="{{ 1 if item.multiple else 0 }}"
+                  @click="select({{ item.t.id }}, true)"
+                  title="{{ item.lemma.display if item.lemma else '' }}">{{ item.t.surface }}</span>
+          {%- else -%}
+            <span class="punct pickable" data-token="{{ item.t.id }}" data-multi="0"
+                  @click="select({{ item.t.id }}, true)"
+                  title="écarté du vocabulaire — cliquez pour le rattraper">{{ item.t.surface }}</span>
+          {%- endif -%}
+          {{- item.t.trailing -}}
+        {%- endfor -%}
+      </div>
+    </div>
+
+    {% if doc.page_count > 1 %}
+      <nav class="pager">
+        {% for p in range(doc.page_count) %}
+          <a href="?page={{ p }}" class="{{ 'current' if p == page }}">{{ p + 1 }}</a>
+        {% endfor %}
+      </nav>
+    {% endif %}
+  </div>
+
+  <aside class="panel open">
+    <div x-html="panelHtml"></div>
+    <p class="muted small kbd">
+      <b>← →</b> mot · <b>↑ ↓</b> lemme · <b>i</b> nom propre ·
+      <b>s</b> segmentation · <b>m</b> compter comme un mot
+    </p>
+  </aside>
+</div>
+<script src="/static/admin_reader.js?v={{ asset_version }}"></script>
+{% endblock %}

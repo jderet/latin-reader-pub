@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Arbitrage{% endblock %}
+{% block content %}
+<section class="stack">
+  <h1>Arbitrage des lemmes</h1>
+  <p class="muted small">
+    Ces formes se rattachent à plusieurs lemmes. Votre choix vaut pour tous
+    les lecteurs et pour toutes les occurrences de la forme.
+  </p>
+
+  {% if not entries %}
+    <p class="notice">Aucune forme en attente : tout est arbitré.</p>
+  {% endif %}
+
+  <ul class="arbitrate">
+    {% for e in entries %}
+      <li data-token="{{ e.token.id }}">
+        <p class="surface">{{ e.token.surface }}
+          <span class="muted small">{{ e.text.title if e.text }}</span></p>
+        <p class="context small">{{ e.sentence }}</p>
+        <div class="candidates-row">
+          {% for c in e.candidates %}
+            <button class="cand-btn {{ 'chosen' if e.chosen and c.lemma|lower == e.chosen.lemma }}"
+                    data-lemma="{{ c.lemma }}" data-upos="{{ c.upos }}">
+              {{ c.lemma }} <span class="upos">{{ c.upos }}</span>
+              <span class="score">{{ (c.score * 100)|round|int }}</span>
+            </button>
+          {% endfor %}
+        </div>
+      </li>
+    {% endfor %}
+  </ul>
+</section>
+<script src="/static/admin.js?v={{ asset_version }}"></script>
+{% endblock %}

@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Comptes{% endblock %}
+{% block content %}
+<section class="stack">
+  <h1>Comptes</h1>
+  {% if error %}<p class="error-box">{{ error }}</p>{% endif %}
+
+  <table class="grid">
+    <thead><tr><th>Identifiant</th><th>Rôle</th><th>Créé le</th><th>Dernière visite</th><th></th></tr></thead>
+    <tbody>
+      {% for u in users %}
+        <tr>
+          <td><b>{{ u.username }}</b>
+            {% if u.display_name and u.display_name != u.username %}
+              <span class="muted small">{{ u.display_name }}</span>{% endif %}</td>
+          <td>{{ "administrateur" if u.is_admin else "lecteur" }}</td>
+          <td class="muted small">{{ u.created_at.strftime('%Y-%m-%d') }}</td>
+          <td class="muted small">{{ u.last_seen.strftime('%Y-%m-%d') if u.last_seen else '—' }}</td>
+          <td>
+            <form method="post" action="/admin/users/{{ u.id }}/password" class="inline">
+              <input type="password" name="password" placeholder="nouveau mot de passe"
+                     required style="width:11rem">
+              <button class="link">réinitialiser</button>
+            </form>
+            {% if u.id != me.id %}
+              <form method="post" action="/admin/users/{{ u.id }}/delete" class="inline"
+                    onsubmit="return confirm('Supprimer « {{ u.username }} » et toutes ses données ? Cette action est irréversible.')">
+                <button class="link danger">supprimer</button>
+              </form>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <h2>Compte de démonstration</h2>
+  <p class="muted small">
+    Le compte <b>moyen</b> (mot de passe <b>moyenla</b>) simule un lecteur
+    de niveau intermédiaire : 5 000 lemmes tirés au sort, répartis entre les
+    statuts. Il sert à voir l'application telle que la verrait quelqu'un
+    possédant déjà du vocabulaire. Le régénérer efface et retire ses statuts.
+  </p>
+  <form method="post" action="/admin/users/demo"
+        onsubmit="return confirm('Régénérer le compte « moyen » ? Ses statuts actuels seront remplacés.')">
+    <button type="submit">Régénérer le compte « moyen »</button>
+  </form>
+
+  <h2>Créer un compte</h2>
+  <p class="muted small">
+    Les lecteurs peuvent aussi s'inscrire eux-mêmes depuis la page de connexion.
+  </p>
+  <form method="post" action="/admin/users/create" class="form" style="max-width:26rem">
+    <label>Identifiant <input name="username" required></label>
+    <label>Mot de passe <input type="password" name="password" required></label>
+    <label class="chk"><input type="checkbox" name="is_admin" value="true"> administrateur</label>
+    <button type="submit">Créer</button>
+  </form>
+</section>
+{% endblock %}

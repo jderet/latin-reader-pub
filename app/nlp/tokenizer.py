@@ -3,9 +3,16 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass
 
-_TOKEN_RE = re.compile(r"[A-Za-z\u00c0-\u024f]+|[^\sA-Za-z\u00c0-\u024f]")
+# La classe inclut les diacritiques combinants (U+0300-U+036F) : sans eux,
+# un texte macronise en NFD (« i » + macron separe, ce que produit macOS)
+# verrait chaque voyelle accentuee couper le mot en deux.
+_LETTER = r"A-Za-z\u00c0-\u024f\u0300-\u036f"
+# Les suites de chiffres forment un seul token : sans cela « 1234 »
+# se decoupait en quatre, chacun affiche separement et incliquable.
+_TOKEN_RE = re.compile(rf"[{_LETTER}]+|\d+|[^\s{_LETTER}\d]")
 _SENT_END = {".", "?", "!", ";", ":"}
 # Abreviations courantes qui ne terminent pas une phrase.
 _ABBREV = {"c", "l", "m", "p", "q", "t", "cn", "sex", "ti", "kal", "id", "non"}
@@ -20,6 +27,9 @@ class RawToken:
 
 
 def tokenize(text: str) -> list[RawToken]:
+    # Recomposition NFC : sans elle, un macron stocke a part couperait
+    # le mot. Sans effet sur un texte deja normalise a l'import.
+    text = unicodedata.normalize("NFC", text)
     tokens: list[RawToken] = []
     sentence = 0
     for m in _TOKEN_RE.finditer(text):
@@ -30,10 +40,3 @@ def tokenize(text: str) -> list[RawToken]:
             if not (surface == "." and prev in _ABBREV):
                 sentence += 1
     return tokens
-
-
-def sentence_text(text: str, tokens: list[RawToken], sentence: int) -> str:
-    members = [t for t in tokens if t.sentence == sentence]
-    if not members:
-        return ""
-    return text[members[0].start : members[-1].end]

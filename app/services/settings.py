@@ -44,8 +44,14 @@ OPTIONS: list[Option] = [
            help="Proportion de la taille de base."),
     Option("line_height", "Interligne", "int", 210, "Texte",
            minimum=130, maximum=320, step=5, unit="%"),
-    Option("text_width", "Largeur de la colonne de texte", "int", 720, "Texte",
-           minimum=420, maximum=1100, step=20, unit="px"),
+    # La largeur se mesure en caracteres, non en pixels : c'est la mesure
+    # typographique, et elle suit la taille de police au lieu de la
+    # contredire. Entre 55 et 75 signes par ligne, la lecture est la plus
+    # aisee ; au-dela, l'oeil peine a retrouver le debut de la ligne.
+    Option("line_chars", "Longueur de ligne", "int", 62, "Texte",
+           minimum=38, maximum=110, step=2, unit=" signes",
+           help="Nombre de caractères par ligne. Entre 55 et 75 pour un "
+                "confort optimal."),
     Option("justify", "Justifier le texte", "bool", False, "Texte"),
 
     # ---------------- Couleurs ----------------
@@ -74,6 +80,9 @@ OPTIONS: list[Option] = [
            True, "Lecture"),
     Option("panel_dictionary", "Afficher le dictionnaire dans le panneau", "bool",
            True, "Lecture"),
+    Option("show_help", "Mode tutoriel", "bool", True, "Lecture",
+           help="Garde affichés les raccourcis, la légende des couleurs et les "
+                "explications. Décochez une fois l'application en main."),
     Option("autofill_gloss", "Pré-remplir la traduction depuis le dictionnaire", "bool",
            True, "Lecture",
            help="La traduction proposée n'est enregistrée que si vous la validez."),
@@ -110,10 +119,12 @@ def _coerce(option: Option, raw: str) -> Any:
     return raw
 
 
-def load(session: Session) -> dict[str, Any]:
+def load(session: Session, user_id: int) -> dict[str, Any]:
     """Reglages courants, defauts compris."""
     values = {o.key: o.default for o in OPTIONS}
-    for row in session.scalars(select(Setting)).all():
+    for row in session.scalars(
+        select(Setting).where(Setting.user_id == user_id)
+    ).all():
         option = BY_KEY.get(row.key)
         if option is not None:
             values[row.key] = _coerce(option, row.value)
@@ -121,7 +132,7 @@ def load(session: Session) -> dict[str, Any]:
     return values
 
 
-def save(session: Session, submitted: dict[str, str]) -> dict[str, Any]:
+def save(session: Session, user_id: int, submitted: dict[str, str]) -> dict[str, Any]:
     """Enregistre le formulaire. Les cases non cochees sont absentes du
     POST : on les traite donc comme fausses plutot que comme inchangees."""
     for option in OPTIONS:
@@ -132,17 +143,19 @@ def save(session: Session, submitted: dict[str, str]) -> dict[str, Any]:
         else:
             continue
 
-        row = session.get(Setting, option.key)
+        row = session.get(Setting, (user_id, option.key))
         stored = "1" if value is True else ("0" if value is False else str(value))
         if row is None:
-            session.add(Setting(key=option.key, value=stored))
+            session.add(Setting(user_id=user_id, key=option.key, value=stored))
         else:
             row.value = stored
     session.flush()
-    return load(session)
+    return load(session, user_id)
 
 
-def reset(session: Session) -> None:
-    for row in session.scalars(select(Setting)).all():
+def reset(session: Session, user_id: int) -> None:
+    for row in session.scalars(
+        select(Setting).where(Setting.user_id == user_id)
+    ).all():
         session.delete(row)
     session.flush()

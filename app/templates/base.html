@@ -8,17 +8,57 @@
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/alpinejs/3.14.1/cdn.min.js"></script>
 </head>
 <body>
+{% set est_admin = request.state.user and request.state.user.is_admin %}
+{% set en_gestion = est_admin and request.state.mode != 'user' %}
 <header class="topbar">
-  <a class="brand" href="/">Lecteur latin</a>
+  <a class="brand" href="{{ '/admin' if en_gestion else '/' }}">Lecteur latin</a>
   <nav>
-    <a href="/">Bibliothèque</a>
-    <a href="/words">Mots</a>
-    <a href="/review">Réviser</a>
-    <a href="/cards">Fiches</a>
-    <a href="/stats">Statistiques</a>
-    <a href="/settings">Réglages</a>
+    {% if en_gestion %}
+      <a href="/admin">Tableau de bord</a>
+      <a href="/admin/books">Livres</a>
+      <a href="/admin/arbitrate">Arbitrage</a>
+      <a href="/admin/lemmas">Lemmes</a>
+      <a href="/admin/users">Comptes</a>
+      <a href="/settings">Réglages</a>
+    {% elif request.state.user %}
+      <a href="/">Bibliothèque</a>
+      <a href="/words">Mots</a>
+      <a href="/review">Réviser</a>
+      <a href="/stats">Statistiques</a>
+      <a href="/settings">Réglages</a>
+    {% endif %}
   </nav>
+  {% if est_admin %}
+    <form method="post" action="/mode/{{ 'user' if en_gestion else 'admin' }}"
+          class="mode-switch inline" id="mode-form">
+      <input type="hidden" name="next_url" value="{{ '/' if en_gestion else '/admin' }}">
+      <button class="mode-btn {{ 'is-admin' if en_gestion else 'is-user' }}"
+              title="Raccourci : Ctrl + M">
+        {{ 'mode gestion' if en_gestion else 'mode lecture' }}
+        <span class="mode-hint">passer en {{ 'lecture' if en_gestion else 'gestion' }}</span>
+      </button>
+    </form>
+  {% endif %}
+  {% if request.state.user %}
+    <div class="account-menu">
+      <a href="/account">{{ request.state.user.display_name or request.state.user.username }}</a>
+      <form method="post" action="/logout" class="inline">
+        <button class="link">déconnexion</button>
+      </form>
+    </div>
+  {% endif %}
 </header>
+{% if est_admin %}
+<script>
+  // Ctrl + M bascule d'un mode à l'autre, où que l'on soit.
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'm' || e.key === 'M')) {
+      e.preventDefault();
+      document.getElementById('mode-form')?.submit();
+    }
+  });
+</script>
+{% endif %}
 <main>
   {% block content %}{% endblock %}
 </main>

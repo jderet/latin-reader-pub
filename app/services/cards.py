@@ -61,6 +61,7 @@ def cloze_of(session: Session, token: TextToken) -> str:
 
 def create_cards(
     session: Session,
+    user_id: int,
     *,
     lemma_id: int,
     kinds: list[str],
@@ -71,8 +72,14 @@ def create_cards(
     if lemma is None:
         raise ValueError("lemme inconnu")
 
-    status = session.get(LemmaStatus, lemma_id)
-    gloss = (gloss or (status.gloss if status else None) or "").strip()
+    status = session.get(LemmaStatus, (user_id, lemma_id))
+    # Traduction personnelle, sinon celle rédigée par l'administrateur.
+    gloss = (
+        gloss
+        or (status.gloss if status and status.gloss else None)
+        or lemma.shared_gloss
+        or ""
+    ).strip()
     if not gloss and "cloze" not in kinds:
         raise ValueError("une glose est requise pour les fiches de vocabulaire")
 
@@ -81,7 +88,11 @@ def create_cards(
         if kind not in KINDS:
             raise ValueError(f"type de fiche inconnu : {kind}")
         card = session.scalars(
-            select(Card).where(Card.lemma_id == lemma_id, Card.kind == kind)
+            select(Card).where(
+                Card.user_id == user_id,
+                Card.lemma_id == lemma_id,
+                Card.kind == kind,
+            )
         ).first()
 
         if kind == "la_fr":
@@ -95,7 +106,7 @@ def create_cards(
             back = token.surface
 
         if card is None:
-            card = Card(lemma_id=lemma_id, kind=kind, front=front, back=back)
+            card = Card(user_id=user_id, lemma_id=lemma_id, kind=kind, front=front, back=back)
             if kind == "cloze" and token is not None:
                 card.extra = {"feats": token.feats, "token_id": token.id}
             session.add(card)
@@ -140,11 +151,18 @@ def attach_context(session: Session, card: Card, token: TextToken) -> None:
         session.delete(old)
 
 
-def due_queue(session: Session, *, now: dt.datetime | None = None, limit: int = 50) -> list[Card]:
+def due_queue(
+    session: Session, user_id: int, *,
+    now: dt.datetime | None = None, limit: int = 50,
+) -> list[Card]:
     now = now or utcnow()
     rows = session.scalars(
         select(Card)
-        .where(Card.is_suspended.is_(False), Card.due_at <= now)
+        .where(
+            Card.user_id == user_id,
+            Card.is_suspended.is_(False),
+            Card.due_at <= now,
+        )
         .order_by(Card.due_at)
     ).all()
     new_cards = [c for c in rows if c.is_new][:DAILY_NEW_LIMIT]
@@ -154,9 +172,11 @@ def due_queue(session: Session, *, now: dt.datetime | None = None, limit: int = 
     return queue[:limit]
 
 
-def queue_stats(session: Session, now: dt.datetime | None = None) -> dict:
+def queue_stats(session: Session, user_id: int, now: dt.datetime | None = None) -> dict:
     now = now or utcnow()
-    rows = session.scalars(select(Card).where(Card.is_suspended.is_(False))).all()
+    rows = session.scalars(
+        select(Card).where(Card.user_id == user_id, Card.is_suspended.is_(False))
+    ).all()
     due = [c for c in rows if c.due_at <= now]
     return {
         "total": len(rows),
@@ -199,14 +219,18 @@ def review(
 
     if card.kind == "cloze":
         feats = (card.extra or {}).get("feats") or {}
-        knowledge.record_morph_attempt(session, feats, success=quality >= 3)
+        knowledge.record_morph_attempt(
+            session, card.user_id, feats, success=quality >= 3
+        )
 
-    status_row = session.get(LemmaStatus, card.lemma_id)
+    status_row = session.get(LemmaStatus, (card.user_id, card.lemma_id))
     status_changed = None
     if status_row is not None:
         siblings = session.scalars(
             select(Card).where(
-                Card.lemma_id == card.lemma_id, Card.is_suspended.is_(False)
+                Card.user_id == card.user_id,
+                Card.lemma_id == card.lemma_id,
+                Card.is_suspended.is_(False),
             )
         ).all()
         new_status = next_status(
