@@ -47,7 +47,7 @@ def main() -> None:
             print(f"  erreur         : {doc.error_message}")
             return
 
-        cov = knowledge.text_coverage(session, text_id)
+        cov = knowledge.text_coverage(session, user_id=1, text_id=text_id)
         print(f"  lemmes distincts : {cov['distinct_lemmas']}")
 
         ambiguous = [
