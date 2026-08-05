@@ -513,13 +513,14 @@ function reader() {
       this.validating = true;
       const out = await this.post(
         `/api/texts/${this.textId}/pages/${this.page}/read`,
-        { mark_unseen: marquer ? '1' : '' }
+        { mark_unseen: marquer ? '1' : '' },
+        { horsLigne: true }
       );
       this.validating = false;
       if (!out) return;
 
       this.pageRead = true;
-      if (marquer && out.validated) {
+      if (marquer && (out.validated || out.queued)) {
         // On repeint les mots concernes sans recharger la page.
         this.root?.querySelectorAll('.text-body .w.unseen').forEach((el) => {
           el.classList.remove('unseen');
@@ -816,7 +817,9 @@ function reader() {
       if (this.panel) this.open(tokenId);
     },
 
-    async post(url, data) {
+    // horsLigne : cette mutation est idempotente et peut attendre le
+    // retour du réseau ; on la met en file et on rend un accusé local.
+    async post(url, data, { horsLigne = false } = {}) {
       const body = new FormData();
       Object.entries(data).forEach(([k, v]) => {
         if (v !== null && v !== undefined) body.append(k, v);
@@ -825,6 +828,10 @@ function reader() {
       try {
         res = await fetch(url, { method: 'POST', body });
       } catch (err) {
+        if (horsLigne && window.fileAttente) {
+          window.fileAttente.push(url, data);
+          return { queued: true };
+        }
         alert(`Le serveur ne répond pas : ${err}`);
         return null;
       }
@@ -846,7 +853,15 @@ function reader() {
       const out = await this.post(`/api/lemmas/${lemmaId}/status`, {
         status: status,
         is_ignored: ignore ? 'true' : null,
-      });
+      }, { horsLigne: true });
+      if (out && out.queued) {
+        // Hors-ligne : on repeint depuis la page, le serveur suivra.
+        const tokens = Array.from(
+          this.root?.querySelectorAll(`.text-body .w[data-lemma="${lemmaId}"]`) || []
+        ).map((el) => parseInt(el.dataset.token, 10));
+        this.repaint({ tokens, status, is_ignored: !!ignore });
+        return;
+      }
       if (out) this.repaint(out);
     },
 

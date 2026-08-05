@@ -120,6 +120,10 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="Lecteur latin", docs_url="/api/docs", lifespan=lifespan)
 
+from .api_v1 import router as api_v1_router  # noqa: E402 - dépend de app
+
+app.include_router(api_v1_router)
+
 class NoCacheStatic(StaticFiles):
     """Fichiers statiques jamais mis en cache par le navigateur.
 
@@ -1079,6 +1083,19 @@ def export_lemmas(session: Session = Depends(get_session),
     user: User = Depends(require_user),
 ):
     return exporter.to_lemma_csv(session)
+
+
+@app.get("/sw.js", include_in_schema=False)
+def service_worker():
+    """Sert le service worker depuis la racine.
+
+    Un service worker ne peut contrôler que les pages sous son chemin :
+    servi depuis /static/, il ne verrait rien. D'où cette route dédiée.
+    """
+    return FileResponse(
+        Path(__file__).resolve().parent / "static" / "sw.js",
+        media_type="application/javascript",
+    )
 
 
 @app.get("/api/health")

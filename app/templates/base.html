@@ -5,7 +5,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Lecteur latin{% endblock %}</title>
   <link rel="stylesheet" href="/static/style.css?v={{ asset_version }}">
+  <link rel="manifest" href="/static/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
+  <meta name="theme-color" content="#2f5d8a">
+  <script src="/static/offline.js?v={{ asset_version }}"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/alpinejs/3.14.1/cdn.min.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js');
+    }
+  </script>
 </head>
 <body>
 {% set est_admin = request.state.user and request.state.user.is_admin %}
@@ -44,6 +53,7 @@
       </button>
     </form>
   {% endif %}
+  <span class="offline-badge small" hidden></span>
   {% if request.state.user %}
     <div class="account-menu">
       <a href="/account">{{ request.state.user.display_name or request.state.user.username }}</a>

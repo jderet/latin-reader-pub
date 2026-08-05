@@ -104,6 +104,27 @@ class User(Base):
     last_seen: Mapped[dt.datetime | None] = mapped_column(UtcDateTime, default=None)
 
 
+class ApiToken(Base):
+    """Jeton d'accès pour les clients natifs (API v1).
+
+    Le cookie de session convient au navigateur ; une application mobile
+    préfère un jeton porteur, longue durée, révocable individuellement.
+    Seule l'empreinte SHA-256 est stockée : le jeton en clair n'est
+    montré qu'à la création.
+    """
+
+    __tablename__ = "api_token"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("user.id", ondelete="CASCADE"), index=True
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    label: Mapped[str | None] = mapped_column(String(120), default=None)
+    created_at: Mapped[dt.datetime] = mapped_column(UtcDateTime, default=utcnow)
+    last_used: Mapped[dt.datetime | None] = mapped_column(UtcDateTime, default=None)
+
+
 # --------------------------------------------------------------------------
 # Lexique
 # --------------------------------------------------------------------------
