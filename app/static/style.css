@@ -987,6 +987,51 @@ button[type=submit]:hover, .validate:hover, .listen:hover {
   width: var(--panneau);
 }
 
+/* ==========================================================================
+   Téléphone
+   ==========================================================================
+   Sous 700 px, la ligne, c'est l'écran : les largeurs fixes calculées
+   pour le confort de lecture au bureau (--ligne en ch) débordent d'un
+   téléphone et coupaient le texte au bord droit. Le panneau garde son
+   mode « inline » (reader.js l'insère sous la ligne du mot cliqué). */
+@media (max-width: 700px) {
+  main { padding: var(--sp-3) .8rem 4rem; }
+
+  /* Barre : la marque et le compte en tête, les liens sur une ligne
+     défilante en dessous — le motif des barres d'onglets tactiles. */
+  .topbar { flex-wrap: wrap; gap: .2rem .8rem; padding: .55rem .8rem; }
+  .topbar nav {
+    order: 10; flex-basis: 100%;
+    overflow-x: auto; -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .topbar nav::-webkit-scrollbar { display: none; }
+  .topbar nav a { white-space: nowrap; }
+  .account-menu { margin-left: auto; }
+  .offline-badge { flex-basis: 100%; text-align: center; margin-left: 0; }
+  /* La pastille de mode et le compte doivent tenir dans la largeur. */
+  .mode-btn { font-size: .72rem; padding: .2rem .5rem; }
+  .mode-hint { display: none; }
+  .account-menu { font-size: .85rem; }
+
+  /* Lecture : une seule colonne, pleine largeur. */
+  .reading { --marge: 0px; --panneau: 0px; }
+  .reader { display: block; }
+  .reader-main,
+  .admin-reader .reader-main { width: auto; max-width: 100%; }
+  .reader-main > .reader-head,
+  .reader-main > .audio-holder,
+  .reader-main > .video-holder,
+  .reader-main > .read-bar,
+  .reader-main > .pager { width: auto; }
+  .head-line { flex-wrap: wrap; }
+  .text-body { font-size: 1.12rem; line-height: 1.9; }
+
+  /* Les doigts remplacent la souris : cibles un peu plus hautes. */
+  .panel-inner .st { min-width: 2.2rem; min-height: 2.2rem; }
+  .kbd { display: none; } /* les raccourcis clavier, sans clavier */
+}
+
 /* Fondu enchaîné du panneau : l'ancien contenu s'efface pendant que le
    nouveau se prépare. Le vider dès le clic faisait clignoter le panneau. */
 .panel-fade { transition: opacity .12s ease; }
