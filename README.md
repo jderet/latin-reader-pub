@@ -9,7 +9,7 @@ Lecture annotée de textes latins, à la manière de Learning with Texts, mais a
 ### Sans Docker (le plus simple)
 
 ```bash
-cd latin-reader
+cd latin-reader-pub
 python3 -m venv .venv
 .venv/bin/pip install -e ".[dev]"
 .venv/bin/python scripts/seed_demo.py     # charge De bello Gallico I, 1

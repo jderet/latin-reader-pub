@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}{{ titre }} — Lecteur latin{% endblock %}
+{% block content %}
+<section class="stack error-page">
+  <h1>{{ titre }}</h1>
+  <p class="muted">{{ message }}</p>
+  <p><a href="{{ retour_url }}">{{ retour_libelle }}</a></p>
+</section>
+{% endblock %}

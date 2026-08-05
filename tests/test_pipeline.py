@@ -30,6 +30,16 @@ def _db():
     init_db()
 
 
+@pytest.fixture(scope="module")
+def user_id(_db) -> int:
+    from app.services.auth import create_user
+
+    with session_scope() as s:
+        user = create_user(s, "lecteur-test", "motdepasse-test")
+        s.flush()
+        return user.id
+
+
 # --------------------------------------------------------------------------
 # Normalisation
 # --------------------------------------------------------------------------
@@ -93,20 +103,20 @@ def test_import_produit_des_tokens_annotes(text_id):
         assert all(t.candidates for t in words)
 
 
-def test_le_statut_porte_sur_le_lemme_pas_sur_la_forme(text_id):
+def test_le_statut_porte_sur_le_lemme_pas_sur_la_forme(text_id, user_id):
     """Le coeur du projet : Gallos, Galli et Gallia relevent de lemmes
     distincts, mais toutes les occurrences d'un meme lemme partagent un
     statut unique. Ici, marquer « flumen » colore aussi « flumine »."""
     with session_scope() as s:
         doc_tokens = s.query(TextToken).filter_by(text_id=text_id).all()
         flumen = next(t for t in doc_tokens if t.surface == "flumen")
-        knowledge.set_status(s, flumen.chosen_lemma_id, status=2)
+        knowledge.set_status(s, user_id, flumen.chosen_lemma_id, status=2)
         s.flush()
 
         lemma_id = flumen.chosen_lemma_id
         occurrences = [t for t in doc_tokens if t.chosen_lemma_id == lemma_id]
         assert len(occurrences) >= 1
-        st = s.get(LemmaStatus, lemma_id)
+        st = s.get(LemmaStatus, (user_id, lemma_id))
         assert st.status == 2
         assert st.is_locked is True  # modification manuelle -> verrou
 
@@ -129,9 +139,9 @@ def test_arbitrage_se_propage(text_id):
         disambiguation.resolve(s, token=est, lemma_id=sum_lemma.id, scope="global")
 
 
-def test_couverture(text_id):
+def test_couverture(text_id, user_id):
     with session_scope() as s:
-        cov = knowledge.text_coverage(s, text_id)
+        cov = knowledge.text_coverage(s, user_id, text_id)
         assert cov["total_words"] > 0
         assert 0.0 <= cov["known_ratio"] <= 1.0
         assert cov["distinct_lemmas"] > 10
@@ -201,17 +211,18 @@ def test_maitrise_ne_descend_pas_sous_zero():
 # --------------------------------------------------------------------------
 # Fiches
 # --------------------------------------------------------------------------
-def test_creation_et_revision_de_fiche(text_id):
+def test_creation_et_revision_de_fiche(text_id, user_id):
     with session_scope() as s:
         token = (
             s.query(TextToken)
             .filter(TextToken.text_id == text_id, TextToken.surface == "Belgae")
             .first()
         )
-        knowledge.set_status(s, token.chosen_lemma_id, status=4, gloss="les Belges")
+        knowledge.set_status(s, user_id, token.chosen_lemma_id, status=4, gloss="les Belges")
         s.flush()
         created = cards_svc.create_cards(
             s,
+            user_id,
             lemma_id=token.chosen_lemma_id,
             kinds=["la_fr", "cloze"],
             token=token,
@@ -228,18 +239,19 @@ def test_creation_et_revision_de_fiche(text_id):
         assert s.query(Card).filter_by(id=cloze.id).one().repetitions == 1
 
 
-def test_fiche_a_trous_alimente_l_axe_morphologique(text_id):
+def test_fiche_a_trous_alimente_l_axe_morphologique(text_id, user_id):
     with session_scope() as s:
-        weak = knowledge.weakest_features(s, limit=50)
+        weak = knowledge.weakest_features(s, user_id, limit=50)
         assert isinstance(weak, list)
 
 
-def test_glose_requise_pour_le_vocabulaire(text_id):
+def test_glose_requise_pour_le_vocabulaire(text_id, user_id):
     with session_scope() as s:
         token = s.query(TextToken).filter_by(text_id=text_id).filter(
             TextToken.surface == "Matrona"
         ).first()
         with pytest.raises(ValueError):
             cards_svc.create_cards(
-                s, lemma_id=token.chosen_lemma_id, kinds=["la_fr"], token=token, gloss=""
+                s, user_id, lemma_id=token.chosen_lemma_id, kinds=["la_fr"], token=token,
+                gloss="",
             )

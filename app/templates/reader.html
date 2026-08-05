@@ -210,9 +210,11 @@
     <div class="read-bar">
       <button class="validate" @click="markPageRead()" :disabled="validating"
               :class="{ done: pageRead }">
+        {# Alpine ne clone que des elements : du texte nu dans un
+           <template x-if> ne s'affiche jamais. #}
         <span x-show="!validating">
-          <template x-if="!pageRead">J'ai lu la page</template>
-          <template x-if="pageRead">Page lue — relire</template>
+          <span x-show="!pageRead">J'ai lu la page</span>
+          <span x-show="pageRead" x-cloak>Page lue — relire</span>
         </span>
         <span x-show="validating" x-cloak>Enregistrement…</span>
       </button>

@@ -9,7 +9,12 @@
 </head>
 <body>
 {% set est_admin = request.state.user and request.state.user.is_admin %}
-{% set en_gestion = est_admin and request.state.mode != 'user' %}
+{# La barre suit la page affichée : les pages de gestion restent
+   accessibles en mode lecture, et y perdre tout lien vers les autres
+   écrans de gestion désorienterait. #}
+{% set en_gestion = est_admin and (
+    request.state.mode != 'user' or request.url.path.startswith('/admin')
+) %}
 <header class="topbar">
   <a class="brand" href="{{ '/admin' if en_gestion else '/' }}">Lecteur latin</a>
   <nav>

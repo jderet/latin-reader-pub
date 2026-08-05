@@ -9,10 +9,12 @@ from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Upload
 from fastapi.responses import (
     FileResponse,
     HTMLResponse,
+    JSONResponse,
     PlainTextResponse,
     RedirectResponse,
 )
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -196,6 +198,45 @@ app.add_middleware(
 @app.exception_handler(RedirectToLogin)
 def _redirect_to_login(request: Request, exc: RedirectToLogin):
     return RedirectResponse(exc.destination, status_code=303)
+
+
+@app.exception_handler(StarletteHTTPException)
+def _http_error(request: Request, exc: StarletteHTTPException):
+    """Page d'erreur lisible pour la navigation, JSON pour l'API.
+
+    Sans ce gabarit, une adresse erronée affichait le JSON brut de
+    FastAPI ({"detail": "Not Found"}), sans barre de navigation ni
+    chemin de retour.
+    """
+    veut_du_json = request.url.path.startswith(("/api/", "/panel/")) or (
+        "text/html" not in request.headers.get("accept", "")
+    )
+    if veut_du_json:
+        return JSONResponse({"detail": exc.detail}, status_code=exc.status_code,
+                            headers=exc.headers)
+
+    est_admin = request.state.user and request.state.user.is_admin
+    en_gestion = est_admin and request.state.mode != "user"
+    if exc.status_code == 404:
+        titre, message = "Page introuvable", (
+            "Cette adresse ne correspond à rien — le texte a peut-être été "
+            "supprimé, ou le lien est erroné."
+        )
+    else:
+        titre = f"Erreur {exc.status_code}"
+        message = str(exc.detail or "Quelque chose s'est mal passé.")
+    return templates.TemplateResponse(
+        request,
+        "error.html",
+        {
+            "titre": titre,
+            "message": message,
+            "retour_url": "/admin" if en_gestion else "/",
+            "retour_libelle": "Retour au tableau de bord"
+            if en_gestion else "Retour à la bibliothèque",
+        },
+        status_code=exc.status_code,
+    )
 
 
 
