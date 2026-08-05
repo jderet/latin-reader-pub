@@ -123,7 +123,23 @@ function reviewer(queue) {
       body.append('card_id', card.id);
       body.append('button', button);
       body.append('elapsed_ms', Date.now() - this.startedAt);
-      const res = await fetch('/api/reviews', { method: 'POST', body });
+      let res;
+      try {
+        res = await fetch('/api/reviews', { method: 'POST', body });
+      } catch {
+        // Hors-ligne : la révision part dans la file, la session continue
+        // avec l'estimation locale ; le serveur recalculera à l'identique.
+        window.fileAttente?.push('/api/reviews', {
+          card_id: card.id, button: button,
+          elapsed_ms: Date.now() - this.startedAt,
+        });
+        this.queue.shift();
+        if (button === 'again') this.queue.push(card);
+        this.lastMessage = 'Hors-ligne — révision en attente de réseau.';
+        this.shown = false;
+        this.startedAt = Date.now();
+        return;
+      }
       if (!res.ok) { this.lastMessage = 'Échec de l’enregistrement.'; return; }
       const out = await res.json();
 

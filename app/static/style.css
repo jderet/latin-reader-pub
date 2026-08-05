@@ -479,6 +479,11 @@ body.centered { display: flex; align-items: center; justify-content: center; min
 .mode-btn.is-user { border-color: var(--s1); background: color-mix(in srgb, var(--s1) 30%, transparent); }
 .mode-hint { font-size: .62rem; color: var(--muted); }
 .account-menu { margin-left: .8rem; }
+.offline-badge {
+  margin-left: .8rem; padding: .15rem .55rem; border-radius: 99px;
+  background: color-mix(in srgb, var(--s3) 40%, transparent);
+  color: var(--muted);
+}
 
 /* ---------- vue d'arbitrage ---------- */
 /* La grille .reader mesure ses colonnes avec --ligne, --marge et
