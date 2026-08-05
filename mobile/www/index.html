@@ -1,0 +1,25 @@
+<!doctype html>
+<!-- Page de repli : Capacitor exige un webDir, mais l'application
+     charge server.url (capacitor.config.ts). Cette page ne s'affiche
+     que si le serveur est injoignable au premier lancement. -->
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lecteur latin</title>
+  <style>
+    body { font-family: Georgia, serif; background: #171614; color: #e8e4dc;
+           display: grid; place-items: center; min-height: 100vh; margin: 0; }
+    main { text-align: center; padding: 2rem; }
+    button { font: inherit; padding: .5rem 1.2rem; border-radius: 8px;
+             border: 1px solid #8fb4d8; background: none; color: #8fb4d8; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Lecteur latin</h1>
+    <p>Le serveur est injoignable. Vérifiez votre connexion.</p>
+    <button onclick="location.reload()">Réessayer</button>
+  </main>
+</body>
+</html>

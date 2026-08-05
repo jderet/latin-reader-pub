@@ -180,13 +180,24 @@ Le test central s'appelle `test_le_statut_porte_sur_le_lemme_pas_sur_la_forme`.
 
 ---
 
+## Multiplateforme
+
+Le site est une **PWA installable** (manifest + service worker : relecture
+hors-ligne des textes déjà ouverts, file d'attente pour les statuts et
+révisions saisis sans réseau). Les clients natifs s'appuient sur
+l'**API v1** (`/api/v1`, jetons porteurs, schémas dans `/api/docs`) ;
+une coquille Capacitor iOS/Android est prête dans `mobile/`.
+Architecture et feuille de route : `docs/SPECIFICATIONS.md`.
+
+---
+
 ## Limites connues
 
 **Les adaptateurs Stanza et CLTK n'ont pas pu être exécutés.** Ils ont été écrits contre les API publiques des deux bibliothèques, mais l'environnement de développement n'avait pas accès aux poids des modèles. Tout le reste a été exécuté et testé. Attendez-vous à une mise au point sur `app/nlp/engines.py` au premier lancement avec `LEMMATIZER_ORDER=stanza`.
 
 **Le moteur lexical n'est pas contextuel.** Son lexique couvre le passage de César et un noyau courant ; au-delà, il retombe sur des règles de terminaison et devine. C'est un filet, pas une solution.
 
-**Pas d'authentification.** L'application écoute sur `127.0.0.1`. Ne l'exposez pas sans ajouter au minimum une authentification et TLS.
+**TLS non fourni.** L'application a des comptes (sessions signées, jetons API), mais c'est à votre reverse proxy d'apporter HTTPS avant toute exposition.
 
 **Pas de migrations.** Le schéma est créé par `create_all`. Dès que vous aurez des données auxquelles vous tenez, ajoutez Alembic avant de modifier `models.py`.
 
