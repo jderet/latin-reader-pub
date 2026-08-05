@@ -481,7 +481,21 @@ body.centered { display: flex; align-items: center; justify-content: center; min
 .account-menu { margin-left: .8rem; }
 
 /* ---------- vue d'arbitrage ---------- */
+/* La grille .reader mesure ses colonnes avec --ligne, --marge et
+   --panneau. La vue de lecture les calcule dans son gabarit ; ici on les
+   fixe, sans quoi la colonne centrale s'étale à la largeur du contenu et
+   pousse le panneau hors de l'écran. */
+.admin-reader { --ligne: 68ch; --marge: 0px; --panneau: 340px; }
 .admin-reader .panel { display: block; width: 340px; }
+/* Plus de place pour la colonne du panneau : tout descend dans le flux. */
+@media (max-width: 1100px) {
+  .admin-reader { display: block; }
+  .admin-reader .panel,
+  .admin-reader .panel.open {
+    position: static; width: auto; max-height: none; margin-left: 0;
+    border-top: 1px solid var(--line); margin-top: 1rem; padding-top: 1rem;
+  }
+}
 .admin-body { font-size: 1.18rem; line-height: 2; font-family: Georgia, serif; }
 .admin-body .w { border-radius: 3px; padding: .05em .12em; cursor: pointer; }
 /* Un mot à plusieurs lemmes : discret tant qu'il n'est pas atteint. */

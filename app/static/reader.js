@@ -526,6 +526,7 @@ function reader() {
           el.classList.add('s0');
         });
         this.unseenCount = 0;
+        this.refreshGauge();
       }
     },
 
@@ -869,6 +870,50 @@ function reader() {
         ? document.querySelector('.panel-inner .st.ign')
         : document.querySelector(`.panel-inner .st.s${out.status}`);
       if (target) target.classList.add('active');
+      this.refreshGauge();
+    },
+
+    // La jauge d'en-tete reflete les couleurs des mots : on la recompte
+    // depuis la page elle-meme, sans attendre un rechargement.
+    refreshGauge() {
+      const jauge = document.querySelector('.page-gauge');
+      if (!jauge) return;
+      const libelles = {
+        s0: 'maîtrisé', s1: 'presque su', s2: 'en cours',
+        s3: 'fragile', s4: 'inconnu', unseen: 'jamais rencontré',
+      };
+      const compte = {};
+      let total = 0;
+      this.root?.querySelectorAll('.text-body .w').forEach((el) => {
+        if (!el.dataset.lemma || el.classList.contains('ignored')) return;
+        total += 1;
+        const cle = ['s0', 's1', 's2', 's3', 's4']
+          .find((c) => el.classList.contains(c)) || 'unseen';
+        compte[cle] = (compte[cle] || 0) + 1;
+      });
+      if (!total) return;
+
+      const barre = jauge.querySelector('.gauge');
+      if (barre) {
+        barre.innerHTML = ['s0', 's1', 's2', 's3', 's4', 'unseen']
+          .filter((cle) => compte[cle])
+          .map((cle) => {
+            const part = (100 * compte[cle] / total).toFixed(1);
+            const titre = `${libelles[cle]} — ${compte[cle]} mots`;
+            return `<span class="g-${cle}" style="width: ${part}%" title="${titre}"></span>`;
+          })
+          .join('');
+      }
+      const part = Math.round(100 * ((compte.s0 || 0) + (compte.s1 || 0)) / total);
+      const legende = jauge.querySelector('.gauge-legend b');
+      if (legende) {
+        legende.textContent = `${part} %`;
+        legende.className = part >= 90 ? 'ready' : (part >= 70 ? 'near' : '');
+      }
+      jauge.setAttribute(
+        'aria-label',
+        `${part} % du vocabulaire de cette page déjà connu`
+      );
     },
 
     async saveGloss() {

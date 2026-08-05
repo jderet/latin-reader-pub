@@ -6,16 +6,23 @@ Il n'est pas contextuel. Il existe pour trois raisons :
 2. il sert de filet quand Stanza ou CLTK ne rendent aucun candidat ;
 3. il rend les tests reproductibles et rapides.
 
-Il proposait autrefois un petit lexique ecrit a la main, taille pour un
-seul passage de Cesar. Ce lexique a ete retire : la table des formes
-attestees (865 000 tokens des treebanks) et la liste de lemmes du Gaffiot
-le remplacent avantageusement, et `filter_invented_lemmas` les consulte
-apres coup. Ne subsistent ici que les regles de terminaison, qui ont
-l'interet de porter l'analyse morphologique — la personne, le cas, le
-temps — qu'aucune des deux autres ressources ne fournit.
+Deux ressources se completent ici :
+
+- un petit lexique ecrit a la main (data/lexicon.tsv), qui couvre un
+  noyau de vocabulaire et surtout les ambiguites que les treebanks
+  ecrasent par la frequence — « est » y garde ses deux lectures, sum et
+  edo, alors que les corpus annotes ne connaissent pratiquement que sum ;
+- des regles de terminaison, appliquees aux formes que le lexique ignore,
+  qui ont l'interet de porter l'analyse morphologique — la personne, le
+  cas, le temps.
+
+La table des formes attestees et la liste de lemmes du Gaffiot sont
+consultees apres coup par `filter_invented_lemmas`.
 """
 
 from __future__ import annotations
+
+from pathlib import Path
 
 from .base import (
     AnalysisResult,
@@ -58,6 +65,32 @@ SUFFIX_RULES: list[tuple[str, str, str, str, float]] = [
 ]
 
 
+LEXICON_PATH = Path(__file__).resolve().parents[2] / "data" / "lexicon.tsv"
+
+_lexicon_cache: dict[str, list[tuple[str, str, str, float]]] | None = None
+
+
+def _load_lexicon(path: Path = LEXICON_PATH) -> dict[str, list[tuple[str, str, str, float]]]:
+    """Charge le lexique choisi a la main : forme -> lectures ponderees."""
+    global _lexicon_cache
+    if _lexicon_cache is not None:
+        return _lexicon_cache
+    table: dict[str, list[tuple[str, str, str, float]]] = {}
+    if path.exists():
+        with path.open(encoding="utf-8") as fh:
+            for line in fh:
+                line = line.rstrip("\n")
+                if not line or line.startswith("#"):
+                    continue
+                parts = line.split("\t")
+                if len(parts) != 5:
+                    continue
+                form, lemma, upos, feats, weight = parts
+                table.setdefault(form, []).append((lemma, upos, feats, float(weight)))
+    _lexicon_cache = table
+    return table
+
+
 def parse_feats(raw: str) -> dict[str, str]:
     if not raw or raw == "_":
         return {}
@@ -76,16 +109,24 @@ class LexiconLemmatizer:
     version = "1.0"
 
     def __init__(self) -> None:
-        pass
+        self.lexicon = _load_lexicon()
 
     def candidates_for(self, key: str) -> list[LemmaCandidate]:
-        """Devine par la terminaison.
+        """Lexique d'abord, terminaisons ensuite.
 
-        Les lemmes ainsi formes sont souvent faux ; c'est
-        `filter_invented_lemmas` qui les confronte ensuite aux formes
-        attestees et aux listes de reference. L'apport propre de ces
-        regles est l'analyse morphologique qu'elles portent.
+        Le lexique porte les lectures concurrentes choisies a la main
+        (est -> sum ou edo). Les regles de terminaison devinent le reste ;
+        leurs lemmes sont souvent faux, et c'est `filter_invented_lemmas`
+        qui les confronte ensuite aux formes attestees et aux listes de
+        reference. L'apport propre de ces regles est l'analyse
+        morphologique qu'elles portent.
         """
+        known = self.lexicon.get(key)
+        if known:
+            return [
+                LemmaCandidate(lemma, upos, parse_feats(feats), weight)
+                for lemma, upos, feats, weight in known
+            ]
         guesses: list[LemmaCandidate] = []
         for suffix, replacement, upos, feats, weight in SUFFIX_RULES:
             if key.endswith(suffix) and len(key) > len(suffix) + 1:

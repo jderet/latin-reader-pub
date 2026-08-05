@@ -141,11 +141,14 @@ def _dedupe(candidates: list) -> list:
     """Un meme lemme ne doit figurer qu'une fois dans la liste d'arbitrage.
 
     Les differentes categories d'un meme lemme (« cano » nom, verbe et nom
-    propre) produiraient sinon trois entrees identiques a l'ecran.
+    propre) produiraient sinon trois entrees identiques a l'ecran. Deux
+    analyses morphologiques distinctes du meme lemme (lingua nominatif et
+    ablatif) restent en revanche deux candidats : le lemme est le meme,
+    mais l'analyse affichee differe.
     """
-    best: dict[str, LemmaCandidate] = {}
+    best: dict[tuple, LemmaCandidate] = {}
     for cand in candidates:
-        key = _bare(cand.lemma)
+        key = (_bare(cand.lemma), tuple(sorted(cand.feats.items())) if cand.feats else ())
         current = best.get(key)
         if current is None or cand.score > current.score:
             best[key] = cand
@@ -182,13 +185,29 @@ def filter_invented_lemmas(tokens: Sequence[TokenAnalysis]) -> int:
             for lemma, upos, score in attested:
                 merged.append(LemmaCandidate(lemma=lemma, upos=upos, feats={}, score=score))
             # On conserve l'analyse morphologique du moteur quand il
-            # s'accorde avec le corpus : elle est plus riche.
+            # s'accorde avec le corpus : elle est plus riche. La premiere
+            # variante enrichit la lecture attestee ; les suivantes —
+            # lingua nominatif puis ablatif — restent des candidats a part
+            # entiere, legerement en retrait.
             for cand in tok.candidates:
                 bare = _bare(cand.lemma)
                 if bare in known:
+                    enriched = False
                     for m in merged:
-                        if _bare(m.lemma) == bare and cand.feats:
+                        if _bare(m.lemma) == bare and cand.feats and not m.feats:
                             m.feats = cand.feats
+                            enriched = True
+                            break
+                    if not enriched and cand.feats:
+                        attested_score = max(
+                            m.score for m in merged if _bare(m.lemma) == bare
+                        )
+                        merged.append(
+                            LemmaCandidate(
+                                cand.lemma, cand.upos, cand.feats,
+                                min(cand.score, attested_score - 0.001),
+                            )
+                        )
                 else:
                     # Le corpus ne connait pas cette lecture. On la garde si
                     # le lemme existe — un moteur contextuel peut avoir
