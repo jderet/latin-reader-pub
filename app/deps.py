@@ -44,9 +44,33 @@ class RedirectToLogin(HTTPException):
         self.destination = destination
 
 
+def bearer_user(request: Request, session: Session) -> User | None:
+    """Compte porteur d'un jeton API (Authorization: Bearer …)."""
+    import hashlib
+
+    from .models import ApiToken, utcnow
+
+    header = request.headers.get("authorization", "")
+    if not header.lower().startswith("bearer "):
+        return None
+    raw = header[7:].strip()
+    if not raw:
+        return None
+    digest = hashlib.sha256(raw.encode()).hexdigest()
+    token = session.query(ApiToken).filter_by(token_hash=digest).first()
+    if token is None:
+        return None
+    token.last_used = utcnow()
+    return session.get(User, token.user_id)
+
+
 def current_user(
     request: Request, session: Session = Depends(get_session)
 ) -> User | None:
+    # Un jeton API prime sur le cookie : c'est le mode des clients natifs.
+    user = bearer_user(request, session)
+    if user is not None:
+        return user
     user_id = request.session.get(SESSION_KEY)
     if not user_id:
         return None

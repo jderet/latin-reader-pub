@@ -120,6 +120,10 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="Lecteur latin", docs_url="/api/docs", lifespan=lifespan)
 
+from .api_v1 import router as api_v1_router  # noqa: E402 - dépend de app
+
+app.include_router(api_v1_router)
+
 class NoCacheStatic(StaticFiles):
     """Fichiers statiques jamais mis en cache par le navigateur.
 
