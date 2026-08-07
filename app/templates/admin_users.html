@@ -34,6 +34,15 @@
     </tbody>
   </table>
 
+  {% if guests %}
+    <p class="muted small">
+      Plus {{ guests }} compte{{ 's' if guests > 1 else '' }} de passage :
+      des visiteurs qui lisent sans s'être inscrits. Chacun garde son
+      vocabulaire tant qu'il conserve son cookie, et devient un compte
+      nommé s'il s'inscrit.
+    </p>
+  {% endif %}
+
   <h2>Compte de démonstration</h2>
   <p class="muted small">
     Le compte <b>moyen</b> (mot de passe <b>moyenla</b>) simule un lecteur

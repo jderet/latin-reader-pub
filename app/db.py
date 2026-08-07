@@ -44,6 +44,9 @@ SessionLocal = sessionmaker(bind=engine, expire_on_commit=False, class_=Session)
 # existante : sans cette etape, une mise a jour obligerait a effacer la
 # base et donc tout le vocabulaire deja saisi.
 LATE_COLUMNS: dict[str, dict[str, str]] = {
+    "user": {
+        "is_guest": "BOOLEAN NOT NULL DEFAULT 0",
+    },
     "text_token": {
         "is_enclitic": "BOOLEAN NOT NULL DEFAULT 0",
         "parent_token_id": "INTEGER",

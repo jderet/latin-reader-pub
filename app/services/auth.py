@@ -44,6 +44,11 @@ USERNAME_MAX = 64
 DEFAULT_ADMIN = "admin"
 DEFAULT_ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin")
 
+# Prefixe des comptes de passage. Reserve : personne ne peut s'inscrire
+# sous un identifiant qui commence ainsi, sans quoi un visiteur pourrait
+# se faire passer pour l'invite d'un autre.
+GUEST_PREFIX = "invite-"
+
 
 class AuthError(Exception):
     """Entree invalide : identifiant deja pris, mot de passe trop court…"""
@@ -88,6 +93,25 @@ def normalize_username(name: str) -> str:
     return name.lower()
 
 
+def validate_username(session: Session, username: str) -> str:
+    """Verifie un identifiant et renvoie sa forme normalisee."""
+    key = normalize_username(username)
+    if not key:
+        raise AuthError("l'identifiant ne peut pas être vide")
+    if len(key) > USERNAME_MAX:
+        raise AuthError(f"identifiant trop long (maximum {USERNAME_MAX} caractères)")
+    if not key.replace("_", "").replace("-", "").replace(".", "").isalnum():
+        raise AuthError(
+            "l'identifiant ne peut contenir que des lettres, des chiffres, "
+            "et les signes - _ ."
+        )
+    if key.startswith(GUEST_PREFIX):
+        raise AuthError(f"« {GUEST_PREFIX} » est réservé aux comptes de passage")
+    if get_by_username(session, key) is not None:
+        raise AuthError("cet identifiant est déjà pris")
+    return key
+
+
 def get_by_username(session: Session, username: str) -> User | None:
     return session.scalars(
         select(User).where(User.username == normalize_username(username))
@@ -103,23 +127,12 @@ def create_user(
     display_name: str | None = None,
     bootstrap: bool = False,
 ) -> User:
-    key = normalize_username(username)
-    if not key:
-        raise AuthError("l'identifiant ne peut pas être vide")
-    if len(key) > USERNAME_MAX:
-        raise AuthError(f"identifiant trop long (maximum {USERNAME_MAX} caractères)")
-    if not key.replace("_", "").replace("-", "").replace(".", "").isalnum():
-        raise AuthError(
-            "l'identifiant ne peut contenir que des lettres, des chiffres, "
-            "et les signes - _ ."
-        )
+    key = validate_username(session, username)
     # Le compte administrateur initial echappe a la regle de longueur :
     # son mot de passe par defaut est volontairement memorisable, et
     # l'application rappelle de le changer tant qu'il est en place.
     if not bootstrap and not MIN_PASSWORD <= len(password) <= MAX_PASSWORD:
         raise AuthError(f"le mot de passe doit faire au moins {MIN_PASSWORD} caractères")
-    if get_by_username(session, key) is not None:
-        raise AuthError("cet identifiant est déjà pris")
 
     user = User(
         username=key,
@@ -146,6 +159,65 @@ def authenticate(session: Session, username: str, password: str) -> User | None:
     return user
 
 
+# --------------------------------------------------------------------------
+# Comptes de passage
+# --------------------------------------------------------------------------
+def create_guest(session: Session) -> User:
+    """Ouvre un compte pour un visiteur qui ne s'est pas connecte.
+
+    Le site est lisible sans inscription : plutot que de traiter le
+    visiteur comme un cas particulier partout ou l'application suppose un
+    `user_id` — coloration, couverture, fiches —, on lui donne un vrai
+    compte, rattache a son cookie de session. L'invariant « le statut
+    porte sur le lemme, pour un utilisateur » reste entier.
+
+    Le mot de passe est volontairement inutilisable : `verify_password`
+    echoue sur cette chaine, donc nul ne peut se connecter a un compte
+    invite. Seul le cookie y donne acces, et `promote_guest` en fait un
+    compte nomme sans rien perdre.
+    """
+    user = User(
+        username=f"{GUEST_PREFIX}{secrets.token_hex(6)}",
+        password_hash="!",
+        is_admin=False,
+        is_guest=True,
+        display_name="Invité",
+    )
+    session.add(user)
+    session.flush()
+    log.info("compte de passage ouvert : %s", user.username)
+    return user
+
+
+def promote_guest(
+    session: Session, user: User, username: str, password: str
+) -> User:
+    """Convertit un compte de passage en compte nomme.
+
+    On renomme le compte au lieu d'en creer un second : le vocabulaire
+    marque et les fiches creees pendant la visite sont ainsi conserves,
+    puisqu'ils pendent tous du meme `user_id`.
+    """
+    if not user.is_guest:
+        raise AuthError("ce compte est déjà un compte nommé")
+    key = validate_username(session, username)
+    if not MIN_PASSWORD <= len(password) <= MAX_PASSWORD:
+        raise AuthError(f"le mot de passe doit faire au moins {MIN_PASSWORD} caractères")
+    user.username = key
+    user.password_hash = hash_password(password)
+    user.display_name = username.strip() or key
+    user.is_guest = False
+    session.flush()
+    log.info("compte de passage converti : %s", key)
+    return user
+
+
+def count_guests(session: Session) -> int:
+    return session.scalar(
+        select(func.count()).select_from(User).where(User.is_guest.is_(True))
+    ) or 0
+
+
 def set_password(session: Session, user: User, password: str) -> None:
     if not MIN_PASSWORD <= len(password) <= MAX_PASSWORD:
         raise AuthError(f"le mot de passe doit faire au moins {MIN_PASSWORD} caractères")
@@ -159,10 +231,13 @@ def count_users(session: Session, *, admins: bool | None = None) -> int:
     return session.scalar(stmt) or 0
 
 
-def list_users(session: Session) -> list[User]:
-    return list(
-        session.scalars(select(User).order_by(User.is_admin.desc(), User.username)).all()
-    )
+def list_users(session: Session, *, guests: bool = False) -> list[User]:
+    """Les comptes nommes. Les comptes de passage, potentiellement
+    nombreux sur un site public, sont comptes a part (`count_guests`)."""
+    stmt = select(User).order_by(User.is_admin.desc(), User.username)
+    if not guests:
+        stmt = stmt.where(User.is_guest.is_(False))
+    return list(session.scalars(stmt).all())
 
 
 def ensure_default_admin(session: Session) -> User | None:
