@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}Lecteur latin — lire les auteurs dans le texte{% endblock %}
+{% block content %}
+<section class="vitrine">
+
+  <header class="vitrine-hero">
+    <p class="hero-eyebrow">Lecture assistée du latin</p>
+    <h1>Lisez les auteurs latins dans le texte.</h1>
+    <p class="hero-lead">
+      Chaque mot est reconnu, ramené à son lemme et suivi dans votre
+      vocabulaire. Ce que vous apprenez dans César se colore aussitôt
+      chez Cicéron.
+    </p>
+    <p class="vitrine-actions">
+      <a class="cta" href="/bibliotheque">Commencer à lire</a>
+      {% if not request.state.user or request.state.user.is_guest %}
+        <a class="cta-secondaire" href="/login">J'ai déjà un compte</a>
+      {% endif %}
+    </p>
+    <p class="muted small">
+      Aucune inscription n'est nécessaire pour lire : votre vocabulaire
+      vous suit dès le premier mot marqué.
+    </p>
+  </header>
+
+  {# La démonstration ne vaut que si elle porte les vraies couleurs du
+     lecteur : on réutilise les classes .w.s0 à .w.s4, pas une palette
+     recopiée qui divergerait au premier changement de thème. #}
+  <section class="vitrine-demo">
+    <h2>Le texte vous dit où vous en êtes</h2>
+    <p class="demo-phrase">
+      <span class="w s0">Gallia</span>
+      <span class="w s0">est</span>
+      <span class="w s1">omnis</span>
+      <span class="w s2">divisa</span>
+      <span class="w s0">in</span>
+      <span class="w s1">partes</span>
+      <span class="w s3">tres</span>,
+      <span class="w s2">quarum</span>
+      <span class="w s4">unam</span>
+      <span class="w s3">incolunt</span>
+      <span class="w unseen">Belgae</span>.
+    </p>
+    <ul class="demo-legende">
+      <li><span class="pastille s4"></span> inconnu</li>
+      <li><span class="pastille s3"></span> vaguement reconnu</li>
+      <li><span class="pastille s2"></span> reconnu en contexte</li>
+      <li><span class="pastille s1"></span> presque acquis</li>
+      <li><span class="pastille s0"></span> maîtrisé</li>
+      <li><span class="pastille unseen"></span> jamais rencontré</li>
+    </ul>
+  </section>
+
+  <section class="vitrine-argument">
+    <h2>Le statut porte sur le mot, pas sur la forme</h2>
+    <p>
+      C'est le défaut qui gâche les lecteurs assistés : vous marquez
+      <i>flumen</i> comme acquis, et le texte vous resert
+      <i>flumine</i> puis <i>fluminis</i> comme s'il s'agissait de mots
+      neufs. Ici, la lemmatisation ramène chaque forme fléchie à son
+      entrée de dictionnaire.
+    </p>
+    <p class="demo-phrase demo-phrase-serree">
+      <span class="w s0">flumen</span>
+      <span class="w s0">flumine</span>
+      <span class="w s0">fluminis</span>
+      <span class="w s0">flumina</span>
+      <span class="muted small">— un seul mot appris, quatre formes reconnues</span>
+    </p>
+  </section>
+
+  <section class="vitrine-etapes">
+    <h2>Comment ça se passe</h2>
+    <ol class="etapes">
+      <li>
+        <h3>Lisez</h3>
+        <p>
+          Ouvrez un texte du catalogue. Les mots que vous n'avez jamais
+          vus sont soulignés, ceux que vous avez marqués prennent leur
+          couleur.
+        </p>
+      </li>
+      <li>
+        <h3>Marquez</h3>
+        <p>
+          Un clic ouvre le mot : sa forme, son analyse, l'article du
+          Gaffiot. Cinq touches suffisent à noter ce que vous en savez.
+        </p>
+      </li>
+      <li>
+        <h3>Révisez</h3>
+        <p>
+          Les mots que vous choisissez deviennent des fiches, revues à
+          intervalle croissant. Ce que vous retenez remonte tout seul
+          vers « maîtrisé ».
+        </p>
+      </li>
+    </ol>
+  </section>
+
+  {% include "_offer.html" %}
+
+  <section class="vitrine-fin">
+    <h2>Le catalogue vous attend</h2>
+    <p class="muted">
+      César, Cicéron, Virgile, Ovide — et vos propres textes si vous
+      administrez la bibliothèque.
+    </p>
+    <p class="vitrine-actions">
+      <a class="cta" href="/bibliotheque">Ouvrir la bibliothèque</a>
+    </p>
+  </section>
+
+</section>
+{% endblock %}

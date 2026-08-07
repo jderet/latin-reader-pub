@@ -3,16 +3,11 @@
 {% block content %}
 <section class="home">
 
+  {# L'accroche vit desormais sur la vitrine, a la racine : la repeter ici
+     retardait le catalogue de tout un ecran pour un lecteur qui vient
+     chercher un texte. Restent les trois chiffres, qui sont les siens. #}
   <header class="home-hero">
-    <div class="hero-text">
-      <p class="hero-eyebrow">Lecture assistée du latin</p>
-      <h1>Lisez les auteurs latins dans le texte.</h1>
-      <p class="hero-lead">
-        Chaque mot est reconnu, ramené à son lemme et suivi dans votre
-        vocabulaire. Ce que vous apprenez dans César se colore aussitôt
-        chez Cicéron.
-      </p>
-    </div>
+    <h1 class="library-title">Bibliothèque</h1>
     <dl class="hero-stats">
       <div><dt>Mots suivis</dt><dd>{{ progress.total_tracked }}</dd></div>
       <div><dt>Acquis</dt><dd>{{ progress.known }}</dd></div>
@@ -22,16 +17,24 @@
 
   {% if resume %}
     <a class="resume-card" href="/texts/{{ resume.doc.id }}">
-      <span class="resume-label">Reprendre la lecture</span>
-      <span class="resume-title">
-        {{ resume.doc.book.title ~ ' — ' if resume.doc.book }}{{ resume.doc.title }}
-      </span>
-      {% if resume.coverage %}
-        <span class="resume-meta">
-          {{ (resume.coverage.known_ratio * 100)|round }} % du vocabulaire connu ·
-          {{ resume.coverage.total_words }} mots
-        </span>
+      {# Un texte isolé n'a pas de livre, et tout livre n'a pas de
+         couverture : l'encadré doit tenir sans elle. #}
+      {% if resume.doc.book and resume.doc.book.cover_path %}
+        <img class="resume-cover" src="/media/{{ resume.doc.book.cover_path }}"
+             alt="" loading="lazy">
       {% endif %}
+      <span class="resume-corps">
+        <span class="resume-label">Reprendre la lecture</span>
+        <span class="resume-title">
+          {{ resume.doc.book.title ~ ' — ' if resume.doc.book }}{{ resume.doc.title }}
+        </span>
+        {% if resume.coverage %}
+          <span class="resume-meta">
+            {{ (resume.coverage.known_ratio * 100)|round }} % du vocabulaire connu ·
+            {{ resume.coverage.total_words }} mots
+          </span>
+        {% endif %}
+      </span>
     </a>
   {% endif %}
 
@@ -39,16 +42,12 @@
     <input type="search" name="q" value="{{ q }}"
            placeholder="Chercher un livre, un auteur, un texte…" aria-label="Chercher">
     <button type="submit">Chercher</button>
-    {% if q %}<a class="link" href="/">effacer</a>{% endif %}
+    {% if q %}<a class="link" href="/bibliotheque">effacer</a>{% endif %}
   </form>
 
   {% if q %}
     <p class="muted small">
       Résultats pour « {{ q }} » — {{ by_author|length }} auteur(s), {{ loose|length }} texte(s) isolé(s).
-    </p>
-  {% else %}
-    <p class="muted small">
-      {{ book_count }} livre(s), {{ text_count }} texte(s) au catalogue.
     </p>
   {% endif %}
 
@@ -65,7 +64,7 @@
                 <div class="cover-placeholder">{{ e.book.title[:1] }}</div>
               {% endif %}
             </div>
-            <div class="book-body">
+            <div class="book-head">
               <h3 class="book-title">{{ e.book.title }}</h3>
               {% if e.book.subtitle %}<p class="book-sub">{{ e.book.subtitle }}</p>{% endif %}
               <p class="book-meta">
@@ -73,7 +72,13 @@
                 <span>{{ e.chapters|length }} chapitre(s)</span>
                 {% if e.book.translator %}<span>trad. {{ e.book.translator }}</span>{% endif %}
               </p>
+            </div>
 
+            {# Jauge et chapitres passent sous l'illustration, sur toute la
+               largeur : cotes a la couverture ils n'avaient qu'une colonne
+               etroite, ou les intitules de chapitre se cassaient en trois. #}
+            {% if e.spectrum or e.chapters %}
+            <div class="book-foot">
               {% if e.spectrum %}
                 <div class="gauge" role="img"
                      aria-label="{{ (e.ratio * 100)|round }} % du vocabulaire connu">
@@ -89,21 +94,26 @@
                 </p>
               {% endif %}
 
-              <ol class="chapter-links">
-                {% for c in e.chapters %}
-                  <li>
-                    <a href="/texts/{{ c.doc.id }}">
-                      {{ c.doc.chapter_label or c.doc.title }}
-                    </a>
-                    {% if c.coverage %}
-                      <span class="muted small">
-                        {{ (c.coverage.known_ratio * 100)|round }} %
-                      </span>
-                    {% endif %}
-                  </li>
-                {% endfor %}
-              </ol>
+              {# Un rayon encore vide n'a pas de liste : sans cette garde, un
+                 <ol> sans article laissait sa marge sous la carte. #}
+              {% if e.chapters %}
+                <ol class="chapter-links">
+                  {% for c in e.chapters %}
+                    <li>
+                      <a href="/texts/{{ c.doc.id }}">
+                        {{ c.doc.chapter_label or c.doc.title }}
+                      </a>
+                      {% if c.coverage %}
+                        <span class="muted small">
+                          {{ (c.coverage.known_ratio * 100)|round }} %
+                        </span>
+                      {% endif %}
+                    </li>
+                  {% endfor %}
+                </ol>
+              {% endif %}
             </div>
+            {% endif %}
           </article>
         {% endfor %}
       </div>
@@ -149,6 +159,5 @@
     </p>
   {% endif %}
 
-  {% include "_offer.html" %}
 </section>
 {% endblock %}

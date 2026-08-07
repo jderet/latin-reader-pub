@@ -49,10 +49,34 @@ def visiteur():
 
 
 # --------------------------------------------------------------------------
+# Vitrine
+# --------------------------------------------------------------------------
+def test_la_vitrine_s_ouvre_sans_compte(visiteur, texte):
+    res = visiteur.get("/")
+    assert res.status_code == 200
+    assert "Commencer à lire" in res.text
+
+
+def test_la_vitrine_n_ouvre_aucun_compte_de_passage(visiteur, texte):
+    """La racine est la porte des robots : elle ne doit rien semer.
+
+    Un indexeur ne garde pas de cookie et frappe surtout « / » ; si cette
+    page ouvrait un compte, il en creerait un par visite.
+    """
+    with session_scope() as s:
+        avant = len(s.scalars(select(User).where(User.is_guest.is_(True))).all())
+    visiteur.get("/")
+    visiteur.get("/")
+    with session_scope() as s:
+        apres = len(s.scalars(select(User).where(User.is_guest.is_(True))).all())
+    assert apres == avant
+
+
+# --------------------------------------------------------------------------
 # Lecture libre
 # --------------------------------------------------------------------------
 def test_la_bibliotheque_s_ouvre_sans_compte(visiteur, texte):
-    res = visiteur.get("/")
+    res = visiteur.get("/bibliotheque")
     assert res.status_code == 200
     assert "De bello Gallico" in res.text
 
@@ -62,7 +86,7 @@ def test_le_texte_se_lit_sans_compte(visiteur, texte):
 
 
 def test_un_compte_de_passage_est_ouvert(visiteur, texte):
-    visiteur.get("/")
+    visiteur.get("/bibliotheque")
     with session_scope() as s:
         invites = s.scalars(select(User).where(User.is_guest.is_(True))).all()
     assert any(u.username.startswith(GUEST_PREFIX) for u in invites)
@@ -70,18 +94,18 @@ def test_un_compte_de_passage_est_ouvert(visiteur, texte):
 
 def test_le_visiteur_garde_son_compte_d_une_page_a_l_autre(visiteur, texte):
     """Sans quoi chaque clic ouvrirait un compte et perdrait le precedent."""
-    visiteur.get("/")
+    visiteur.get("/bibliotheque")
     with session_scope() as s:
         avant = len(s.scalars(select(User).where(User.is_guest.is_(True))).all())
     visiteur.get(f"/texts/{texte}")
-    visiteur.get("/")
+    visiteur.get("/bibliotheque")
     with session_scope() as s:
         apres = len(s.scalars(select(User).where(User.is_guest.is_(True))).all())
     assert apres == avant
 
 
 def test_un_invite_annote_comme_un_lecteur(visiteur, texte):
-    visiteur.get("/")
+    visiteur.get("/bibliotheque")
     with session_scope() as s:
         lemma_id = s.scalars(select(Lemma.id)).first()
     res = visiteur.post(f"/api/lemmas/{lemma_id}/status", data={"status": 2})
@@ -98,7 +122,7 @@ def test_un_invite_annote_comme_un_lecteur(visiteur, texte):
 # --------------------------------------------------------------------------
 def test_l_inscription_conserve_le_vocabulaire_de_l_invite(visiteur, texte):
     """Le point de toute l'affaire : s'inscrire ne repart pas de zero."""
-    visiteur.get("/")
+    visiteur.get("/bibliotheque")
     with session_scope() as s:
         lemma_id = s.scalars(select(Lemma.id)).first()
     visiteur.post(f"/api/lemmas/{lemma_id}/status", data={"status": 3})
@@ -134,7 +158,7 @@ def test_on_ne_s_inscrit_pas_sous_un_nom_reserve(visiteur, texte):
 
 def test_un_compte_de_passage_n_est_pas_joignable_par_mot_de_passe(visiteur, texte):
     """Son mot de passe est inutilisable : seul le cookie y donne acces."""
-    visiteur.get("/")
+    visiteur.get("/bibliotheque")
     with session_scope() as s:
         invite = s.scalars(select(User).where(User.is_guest.is_(True))).first()
         nom = invite.username

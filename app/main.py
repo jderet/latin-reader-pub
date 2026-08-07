@@ -235,7 +235,7 @@ def _http_error(request: Request, exc: StarletteHTTPException):
         {
             "titre": titre,
             "message": message,
-            "retour_url": "/admin" if en_gestion else "/",
+            "retour_url": "/admin" if en_gestion else "/bibliotheque",
             "retour_libelle": "Retour au tableau de bord"
             if en_gestion else "Retour à la bibliothèque",
         },
@@ -252,7 +252,7 @@ def login_page(request: Request, user: User | None = Depends(current_user)):
     # Un invite n'est pas « connecte » : il doit pouvoir rejoindre son
     # compte nomme, quitte a abandonner ce qu'il a marque en passant.
     if user is not None and not user.is_guest:
-        return redirect("/admin" if user.is_admin else "/")
+        return redirect("/admin" if user.is_admin else "/bibliotheque")
     return templates.TemplateResponse(request, "login.html", {"mode": "login"})
 
 
@@ -273,13 +273,13 @@ def login(
             status_code=401,
         )
     request.session["user_id"] = account.id
-    return redirect("/admin" if account.is_admin else "/")
+    return redirect("/admin" if account.is_admin else "/bibliotheque")
 
 
 @app.get("/register", response_class=HTMLResponse)
 def register_page(request: Request, user: User | None = Depends(current_user)):
     if user is not None and not user.is_guest:
-        return redirect("/admin" if user.is_admin else "/")
+        return redirect("/admin" if user.is_admin else "/bibliotheque")
     return templates.TemplateResponse(
         request, "login.html", {"mode": "register", "guest": user is not None}
     )
@@ -322,7 +322,7 @@ def register(
         )
     session.flush()
     request.session["user_id"] = account.id
-    return redirect("/")
+    return redirect("/bibliotheque")
 
 
 @app.post("/logout")
@@ -374,6 +374,18 @@ def change_password(
 # Bibliotheque
 # --------------------------------------------------------------------------
 @app.get("/", response_class=HTMLResponse)
+def home(request: Request):
+    """Vitrine : ce qu'est l'application, pour qui arrive sans rien savoir.
+
+    Elle ne depend pas de `require_user`, et c'est deliberé : atterrir sur
+    la racine n'ouvre donc aucun compte de passage. Les robots
+    d'indexation, qui ne gardent pas de cookie et frappent surtout la
+    racine, cessent du meme coup d'en semer un par visite.
+    """
+    return templates.TemplateResponse(request, "home.html", {})
+
+
+@app.get("/bibliotheque", response_class=HTMLResponse)
 def library(
     request: Request,
     q: str = "",
@@ -462,8 +474,6 @@ def library(
             "q": q,
             "queue": cards_svc.queue_stats(session, user.id),
             "progress": knowledge.global_progress(session, user.id),
-            "book_count": len(livres),
-            "text_count": len(textes),
         },
     )
 

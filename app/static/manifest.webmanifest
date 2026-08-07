@@ -3,7 +3,7 @@
   "short_name": "Lecteur latin",
   "description": "Lecture annotée de textes latins : statut par lemme et répétition espacée.",
   "lang": "fr",
-  "start_url": "/",
+  "start_url": "/bibliotheque",
   "scope": "/",
   "display": "standalone",
   "background_color": "#fbfaf7",

@@ -35,7 +35,7 @@
       <a href="/admin/users">Comptes</a>
       <a href="/settings">Réglages</a>
     {% elif request.state.user %}
-      <a href="/">Bibliothèque</a>
+      <a href="/bibliotheque">Bibliothèque</a>
       <a href="/words">Mots</a>
       <a href="/review">Réviser</a>
       <a href="/stats">Statistiques</a>
@@ -45,7 +45,8 @@
   {% if est_admin %}
     <form method="post" action="/mode/{{ 'user' if en_gestion else 'admin' }}"
           class="mode-switch inline" id="mode-form">
-      <input type="hidden" name="next_url" value="{{ '/' if en_gestion else '/admin' }}">
+      {# En repassant en lecture on veut le catalogue, pas la vitrine. #}
+      <input type="hidden" name="next_url" value="{{ '/bibliotheque' if en_gestion else '/admin' }}">
       <button class="mode-btn {{ 'is-admin' if en_gestion else 'is-user' }}"
               title="Raccourci : Ctrl + M">
         {{ 'mode gestion' if en_gestion else 'mode lecture' }}

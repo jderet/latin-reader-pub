@@ -753,16 +753,13 @@ button[type=submit]:hover, .validate:hover, .listen:hover {
   display: flex; gap: var(--sp-4); align-items: flex-end; flex-wrap: wrap;
   padding-bottom: var(--sp-3); border-bottom: 1px solid var(--line);
 }
-.hero-text { flex: 1 1 22rem; }
 .hero-eyebrow {
   font-size: .74rem; text-transform: uppercase; letter-spacing: .12em;
   color: var(--accent); margin: 0 0 .4rem; font-weight: 600;
 }
-.home-hero h1 {
-  font-family: Georgia, "Iowan Old Style", serif;
-  font-size: clamp(1.7rem, 3.4vw, 2.5rem); font-weight: 400;
-  line-height: 1.15; letter-spacing: -.02em; margin: 0 0 .5rem;
-}
+/* Le catalogue s'annonce sobrement : l'accroche est sur la vitrine. Le
+   `auto` pousse les chiffres du lecteur contre le bord droit. */
+.library-title { margin: 0 auto 0 0; }
 .hero-lead { color: var(--muted); max-width: 34rem; margin: 0; }
 .hero-stats { display: flex; gap: var(--sp-3); margin: 0; }
 .hero-stats dt {
@@ -775,12 +772,19 @@ button[type=submit]:hover, .validate:hover, .listen:hover {
 }
 
 .resume-card {
-  display: block; text-decoration: none; color: inherit;
+  display: flex; gap: .9rem; align-items: center;
+  text-decoration: none; color: inherit;
   background: var(--accent-soft); border: 1px solid var(--accent);
   border-radius: var(--radius); padding: .9rem 1.1rem;
   transition: box-shadow .16s ease, transform .16s ease;
 }
 .resume-card:hover { box-shadow: var(--shadow-lift); transform: translateY(-1px); }
+/* Proportions de la couverture des cartes du catalogue, en plus petit. */
+.resume-cover {
+  flex: 0 0 auto; width: 48px; height: 68px; object-fit: cover;
+  border-radius: var(--radius-sm); display: block;
+}
+.resume-corps { display: block; min-width: 0; }
 .resume-label {
   display: block; font-size: .72rem; text-transform: uppercase;
   letter-spacing: .07em; color: var(--accent); font-weight: 600;
@@ -796,14 +800,21 @@ button[type=submit]:hover, .validate:hover, .listen:hover {
   display: grid; gap: var(--sp-2);
   grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
 }
+/* Deux zones : l'en-tete tient a cote de la couverture, le pied court sur
+   toute la largeur de la carte. Une grille nommee plutot que deux flex
+   imbriques, pour que le pied ignore la colonne de l'illustration. */
 .book-card {
-  display: flex; gap: .8rem;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas: "cover head" "foot foot";
+  column-gap: .8rem; row-gap: .55rem;
+  align-content: start;
   background: var(--surface); border: 1px solid var(--line);
   border-radius: var(--radius); padding: .8rem; box-shadow: var(--shadow);
   transition: box-shadow .16s ease, transform .16s ease;
 }
 .book-card:hover { box-shadow: var(--shadow-lift); transform: translateY(-1px); }
-.book-cover { flex: 0 0 68px; }
+.book-cover { grid-area: cover; }
 .book-cover img {
   width: 68px; height: 96px; object-fit: cover;
   border-radius: var(--radius-sm); display: block;
@@ -814,7 +825,10 @@ button[type=submit]:hover, .validate:hover, .listen:hover {
   font-family: Georgia, serif; font-size: 2rem; color: var(--surface);
   background: linear-gradient(150deg, var(--accent), #1f4260);
 }
-.book-body { min-width: 0; flex: 1 1 auto; }
+.book-head { grid-area: head; min-width: 0; align-self: start; }
+.book-foot { grid-area: foot; min-width: 0; }
+/* La jauge portait sa propre marge haute, qui doublait le row-gap. */
+.book-foot .gauge { margin-top: 0; }
 .book-title { font-size: 1rem; font-weight: 600; margin: 0; text-transform: none;
               letter-spacing: 0; color: var(--fg); }
 .book-sub { margin: 0; font-size: .82rem; color: var(--muted); font-style: italic; }
@@ -828,6 +842,89 @@ button[type=submit]:hover, .validate:hover, .listen:hover {
 .chapter-links a { text-decoration: none; }
 .chapter-links a:hover { text-decoration: underline; }
 .chapter-links .muted { margin-left: auto; font-variant-numeric: tabular-nums; }
+
+/* ---------- vitrine d'accueil ---------- */
+/* Page publique, distincte du catalogue : elle explique, elle ne liste
+   rien. Elle emprunte les variables de statut au lecteur plutot que de
+   recopier des teintes, pour qu'un changement de palette la suive. */
+.vitrine { display: flex; flex-direction: column; gap: var(--sp-4); }
+.vitrine h2 {
+  font-family: Georgia, "Iowan Old Style", serif; font-weight: 400;
+  font-size: 1.4rem; letter-spacing: -.01em; margin: 0 0 var(--sp-2);
+  text-transform: none; color: var(--fg);
+}
+.vitrine-hero { padding-bottom: var(--sp-3); border-bottom: 1px solid var(--line); }
+.vitrine-hero h1 {
+  font-family: Georgia, "Iowan Old Style", serif;
+  font-size: clamp(1.9rem, 4.2vw, 3rem); font-weight: 400;
+  line-height: 1.1; letter-spacing: -.02em; margin: 0 0 .6rem; max-width: 20ch;
+}
+.vitrine-actions {
+  display: flex; gap: var(--sp-2); flex-wrap: wrap; align-items: center;
+  margin: var(--sp-3) 0 .4rem;
+}
+.cta {
+  display: inline-block; text-decoration: none; font-weight: 600;
+  background: var(--accent); color: var(--surface);
+  padding: .55rem 1.15rem; border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  transition: box-shadow .16s ease, transform .16s ease;
+}
+.cta:hover { box-shadow: var(--shadow-lift); transform: translateY(-1px); }
+.cta-secondaire {
+  text-decoration: none; font-weight: 600; color: var(--accent); padding: .55rem 0;
+}
+.cta-secondaire:hover { text-decoration: underline; }
+
+/* Les mots de demonstration portent les classes du lecteur : il faut
+   seulement leur oter ce qui promet un clic qui n'arrivera pas. */
+.demo-phrase {
+  font-family: Georgia, "Iowan Old Style", serif;
+  font-size: 1.3rem; line-height: 2.1; margin: 0; max-width: 42rem;
+}
+.demo-phrase .w { cursor: default; }
+.demo-phrase .w:hover { outline: none; }
+.demo-phrase-serree { font-size: 1.1rem; line-height: 2; margin-top: var(--sp-2); }
+
+.demo-legende {
+  list-style: none; padding: 0; margin: var(--sp-3) 0 0;
+  display: flex; flex-wrap: wrap; gap: .4rem 1.1rem;
+  font-size: .78rem; color: var(--muted);
+}
+.demo-legende li { display: flex; align-items: center; gap: .4rem; }
+.pastille {
+  width: .85rem; height: .85rem; border-radius: 3px;
+  display: inline-block; border: 1px solid var(--line);
+}
+.pastille.s4 { background: var(--s4); }
+.pastille.s3 { background: var(--s3); }
+.pastille.s2 { background: var(--s2); }
+.pastille.s1 { background: var(--s1); }
+.pastille.s0 { background: transparent; }
+.pastille.unseen { background: var(--unseen); border-color: var(--unseen-line); }
+
+.etapes {
+  list-style: none; counter-reset: etape; padding: 0; margin: 0;
+  display: grid; gap: var(--sp-2);
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+}
+.etapes li {
+  counter-increment: etape;
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: var(--sp-3); box-shadow: var(--shadow);
+}
+.etapes li::before {
+  content: counter(etape);
+  display: flex; align-items: center; justify-content: center;
+  width: 1.7rem; height: 1.7rem; border-radius: 99px;
+  background: var(--accent-soft); color: var(--accent);
+  font-size: .85rem; font-weight: 600;
+}
+.etapes h3 { margin: .55rem 0 .3rem; font-size: 1rem; text-transform: none;
+             letter-spacing: 0; color: var(--fg); }
+.etapes p { margin: 0; color: var(--muted); font-size: .9rem; }
+
+.vitrine-fin { border-top: 1px solid var(--line); padding-top: var(--sp-3); }
 
 /* ---------- maquette d'offre ---------- */
 .offer { border-top: 1px solid var(--line); padding-top: var(--sp-3); }
