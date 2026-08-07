@@ -12,10 +12,18 @@
 
     {% if mode == "register" %}
       <h2>Créer un compte</h2>
-      <p class="muted small">
-        Un nouveau compte est un compte de lecture : vous pourrez lire les textes,
-        annoter le vocabulaire et réviser vos fiches.
-      </p>
+      {% if guest %}
+        <p class="muted small">
+          Vous lisez pour l'instant en invité : votre vocabulaire ne tient qu'à
+          ce navigateur. Lui donner un nom le conserve — les mots déjà marqués
+          et les fiches déjà créées vous suivent.
+        </p>
+      {% else %}
+        <p class="muted small">
+          Un nouveau compte est un compte de lecture : vous pourrez lire les textes,
+          annoter le vocabulaire et réviser vos fiches.
+        </p>
+      {% endif %}
     {% else %}
       <h2>Connexion</h2>
     {% endif %}

@@ -249,7 +249,9 @@ def _http_error(request: Request, exc: StarletteHTTPException):
 # --------------------------------------------------------------------------
 @app.get("/login", response_class=HTMLResponse)
 def login_page(request: Request, user: User | None = Depends(current_user)):
-    if user is not None:
+    # Un invite n'est pas « connecte » : il doit pouvoir rejoindre son
+    # compte nomme, quitte a abandonner ce qu'il a marque en passant.
+    if user is not None and not user.is_guest:
         return redirect("/admin" if user.is_admin else "/")
     return templates.TemplateResponse(request, "login.html", {"mode": "login"})
 
@@ -276,9 +278,11 @@ def login(
 
 @app.get("/register", response_class=HTMLResponse)
 def register_page(request: Request, user: User | None = Depends(current_user)):
-    if user is not None:
+    if user is not None and not user.is_guest:
         return redirect("/admin" if user.is_admin else "/")
-    return templates.TemplateResponse(request, "login.html", {"mode": "register"})
+    return templates.TemplateResponse(
+        request, "login.html", {"mode": "register", "guest": user is not None}
+    )
 
 
 @app.post("/register")
@@ -288,21 +292,32 @@ def register(
     password: str = Form(...),
     password2: str = Form(""),
     session: Session = Depends(get_session),
+    user: User | None = Depends(current_user),
 ):
-    """Inscription libre : tout nouveau compte est un compte de lecture."""
+    """Inscription libre : tout nouveau compte est un compte de lecture.
+
+    Si le visiteur lisait deja sous un compte de passage, on convertit ce
+    compte plutot que d'en ouvrir un second : ce qu'il a marque en lisant
+    le suit dans son compte nomme.
+    """
+    invite = user if (user is not None and user.is_guest) else None
     if password2 and password != password2:
         return templates.TemplateResponse(
             request, "login.html",
             {"mode": "register", "error": "Les deux mots de passe diffèrent.",
-             "username": username},
+             "username": username, "guest": invite is not None},
             status_code=400,
         )
     try:
-        account = auth_svc.create_user(session, username, password)
+        if invite is not None:
+            account = auth_svc.promote_guest(session, invite, username, password)
+        else:
+            account = auth_svc.create_user(session, username, password)
     except auth_svc.AuthError as exc:
         return templates.TemplateResponse(
             request, "login.html",
-            {"mode": "register", "error": str(exc), "username": username},
+            {"mode": "register", "error": str(exc), "username": username,
+             "guest": invite is not None},
             status_code=400,
         )
     session.flush()
@@ -320,6 +335,10 @@ def logout(request: Request):
 def account_page(request: Request, user: User = Depends(current_user)):
     if user is None:
         raise RedirectToLogin()
+    # Un compte de passage n'a pas de mot de passe a changer : la seule
+    # action qui ait un sens pour lui est de se donner un nom.
+    if user.is_guest:
+        return redirect("/register")
     return templates.TemplateResponse(request, "account.html", {"account": user})
 
 
@@ -1682,7 +1701,11 @@ def admin_users(
     return templates.TemplateResponse(
         request,
         "admin_users.html",
-        {"users": auth_svc.list_users(session), "me": admin},
+        {
+            "users": auth_svc.list_users(session),
+            "me": admin,
+            "guests": auth_svc.count_guests(session),
+        },
     )
 
 

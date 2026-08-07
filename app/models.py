@@ -99,6 +99,11 @@ class User(Base):
     username: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(255))
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Compte ouvert d'office au premier passage d'un visiteur, sans mot de
+    # passe utilisable. Il porte de vrais statuts et de vraies fiches : la
+    # seule difference est qu'on ne peut pas s'y reconnecter tant qu'il n'a
+    # pas ete converti en compte nomme (cf. auth.promote_guest).
+    is_guest: Mapped[bool] = mapped_column(Boolean, default=False)
     display_name: Mapped[str | None] = mapped_column(String(120), default=None)
     created_at: Mapped[dt.datetime] = mapped_column(UtcDateTime, default=utcnow)
     last_seen: Mapped[dt.datetime | None] = mapped_column(UtcDateTime, default=None)

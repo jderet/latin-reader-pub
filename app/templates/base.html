@@ -54,7 +54,15 @@
     </form>
   {% endif %}
   <span class="offline-badge small" hidden></span>
-  {% if request.state.user %}
+  {% if request.state.user and request.state.user.is_guest %}
+    {# Le visiteur lit sous un compte de passage : on lui rappelle que son
+       vocabulaire ne tient qu'à ce navigateur tant qu'il n'a pas de nom. #}
+    <div class="account-menu">
+      <span class="muted small">Invité</span>
+      <a href="/register">créer un compte</a>
+      <a href="/login">connexion</a>
+    </div>
+  {% elif request.state.user %}
     <div class="account-menu">
       <a href="/account">{{ request.state.user.display_name or request.state.user.username }}</a>
       <form method="post" action="/logout" class="inline">

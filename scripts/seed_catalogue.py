@@ -6,6 +6,7 @@ fournie, non de constituer un corpus : chaque chapitre ne contient que
 quelques lignes. Les textes sont antiques, donc du domaine public.
 
     python scripts/seed_catalogue.py            # ajoute ce qui manque
+    python scripts/seed_catalogue.py --vides    # seulement les rayons vides
     python scripts/seed_catalogue.py --purge    # retire les livres de demo
 
 Les livres crees ici portent la marque `is_demo` : l'administrateur peut
@@ -142,6 +143,107 @@ CATALOGUE = [
     },
 ]
 
+# Livres annonces mais encore vides. Ils ne servent qu'a donner au
+# catalogue l'allure d'une bibliotheque en cours de constitution : trois
+# auteurs, plusieurs oeuvres chacun, aucun chapitre. L'administrateur y
+# rattachera ses textes au fur et a mesure. Ils portent `is_demo` comme
+# les autres, donc `--purge` les retire d'un coup.
+LIVRES_VIDES = [
+    # Cicéron
+    {
+        "title": "De officiis",
+        "subtitle": "Les Devoirs",
+        "author": "Cicéron",
+        "era": "Ier siècle av. J.-C.",
+        "description": "Traité de morale adressé à son fils, testament "
+        "philosophique de Cicéron.",
+        "chapters": [],
+    },
+    {
+        "title": "Laelius de amicitia",
+        "subtitle": "L'Amitié",
+        "author": "Cicéron",
+        "era": "Ier siècle av. J.-C.",
+        "description": "Dialogue sur l'amitié, d'une langue limpide "
+        "souvent donnée à lire aux débutants.",
+        "chapters": [],
+    },
+    {
+        "title": "Cato maior de senectute",
+        "subtitle": "La Vieillesse",
+        "author": "Cicéron",
+        "era": "Ier siècle av. J.-C.",
+        "description": "Éloge de la vieillesse, mis dans la bouche de "
+        "Caton l'Ancien.",
+        "chapters": [],
+    },
+    {
+        "title": "Tusculanae disputationes",
+        "subtitle": "Tusculanes",
+        "author": "Cicéron",
+        "era": "Ier siècle av. J.-C.",
+        "description": "Cinq entretiens sur la mort, la douleur et le "
+        "bonheur.",
+        "chapters": [],
+    },
+    # Virgile
+    {
+        "title": "Bucolica",
+        "subtitle": "Les Bucoliques",
+        "author": "Virgile",
+        "era": "Ier siècle av. J.-C.",
+        "description": "Dix églogues pastorales, premier livre publié "
+        "par Virgile.",
+        "chapters": [],
+    },
+    {
+        "title": "Georgica",
+        "subtitle": "Les Géorgiques",
+        "author": "Virgile",
+        "era": "Ier siècle av. J.-C.",
+        "description": "Quatre livres sur le travail de la terre, "
+        "l'élevage et les abeilles.",
+        "chapters": [],
+    },
+    # Ovide
+    {
+        "title": "Ars amatoria",
+        "subtitle": "L'Art d'aimer",
+        "author": "Ovide",
+        "era": "Ier siècle",
+        "description": "Manuel de séduction en trois livres, qui valut "
+        "peut-être à son auteur son exil.",
+        "chapters": [],
+    },
+    {
+        "title": "Heroides",
+        "subtitle": "Les Héroïdes",
+        "author": "Ovide",
+        "era": "Ier siècle",
+        "description": "Lettres d'amour fictives d'héroïnes de la "
+        "mythologie à ceux qui les ont quittées.",
+        "chapters": [],
+    },
+    {
+        "title": "Tristia",
+        "subtitle": "Les Tristes",
+        "author": "Ovide",
+        "era": "Ier siècle",
+        "description": "Élégies écrites depuis l'exil de Tomes, sur la "
+        "mer Noire.",
+        "chapters": [],
+    },
+    {
+        "title": "Fasti",
+        "subtitle": "Les Fastes",
+        "author": "Ovide",
+        "era": "Ier siècle",
+        "description": "Le calendrier romain mois par mois, fêtes et "
+        "légendes à l'appui.",
+        "chapters": [],
+    },
+]
+
 
 def purge() -> int:
     """Retire les livres de demonstration et leurs textes."""
@@ -156,11 +258,18 @@ def purge() -> int:
     return retires
 
 
-def seed() -> dict:
+def seed(*, vides_seulement: bool = False) -> dict:
+    """Ajoute les livres manquants.
+
+    `vides_seulement` s'en tient aux rayons annonces (aucun chapitre),
+    ce qui remplit l'interface sans declencher de lemmatisation — la
+    seule etape couteuse de ce script.
+    """
     init_db()
     crees, chapitres = 0, []
 
-    for fiche in CATALOGUE:
+    fiches = LIVRES_VIDES if vides_seulement else CATALOGUE + LIVRES_VIDES
+    for fiche in fiches:
         with session_scope() as session:
             existant = session.scalars(
                 select(Book).where(Book.title == fiche["title"])
@@ -205,7 +314,7 @@ def main() -> None:
         init_db()
         print(f"  {purge()} livre(s) de démonstration retiré(s)")
         return
-    stats = seed()
+    stats = seed(vides_seulement="--vides" in sys.argv)
     print(
         f"  {stats['books']} livre(s) et {stats['chapters']} chapitre(s) ajoutés"
         if stats["books"]
