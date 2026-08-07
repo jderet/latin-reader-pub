@@ -65,7 +65,12 @@
               {% endif %}
             </div>
             <div class="book-head">
-              <h3 class="book-title">{{ e.book.title }}</h3>
+              {# Le lien porte sur le titre mais couvre toute la carte
+                 (::after en surimpression) : on garde un HTML valide,
+                 sans imbriquer les liens de chapitre dans un autre lien. #}
+              <h3 class="book-title">
+                <a class="book-lien" href="/livres/{{ e.book.id }}">{{ e.book.title }}</a>
+              </h3>
               {% if e.book.subtitle %}<p class="book-sub">{{ e.book.subtitle }}</p>{% endif %}
               <p class="book-meta">
                 {% if e.book.era %}<span>{{ e.book.era }}</span>{% endif %}

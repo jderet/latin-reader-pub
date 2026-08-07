@@ -813,7 +813,16 @@ button[type=submit]:hover, .validate:hover, .listen:hover {
   border-radius: var(--radius); padding: .8rem; box-shadow: var(--shadow);
   transition: box-shadow .16s ease, transform .16s ease;
 }
+.book-card { position: relative; }
 .book-card:hover { box-shadow: var(--shadow-lift); transform: translateY(-1px); }
+/* Toute la carte mene au livre. Le lien reste porte par le titre — donc
+   annonce comme tel aux lecteurs d'ecran et au clavier — et son ::after
+   couvre la carte pour la souris. Les liens de chapitre repassent
+   au-dessus, sans quoi la surimpression les avalerait. */
+.book-lien { text-decoration: none; color: inherit; }
+.book-lien::after { content: ''; position: absolute; inset: 0; border-radius: var(--radius); }
+.book-lien:hover { text-decoration: underline; }
+.book-card .chapter-links { position: relative; z-index: 1; }
 .book-cover { grid-area: cover; }
 .book-cover img {
   width: 68px; height: 96px; object-fit: cover;
@@ -842,6 +851,48 @@ button[type=submit]:hover, .validate:hover, .listen:hover {
 .chapter-links a { text-decoration: none; }
 .chapter-links a:hover { text-decoration: underline; }
 .chapter-links .muted { margin-left: auto; font-variant-numeric: tabular-nums; }
+
+/* ---------- page d'un livre ---------- */
+.fil { margin: 0 0 var(--sp-2); font-size: .82rem; }
+.fil a { text-decoration: none; color: var(--muted); }
+.fil a:hover { color: var(--accent); text-decoration: underline; }
+
+.livre-tete {
+  display: flex; gap: var(--sp-3); align-items: flex-start; flex-wrap: wrap;
+  padding-bottom: var(--sp-3); border-bottom: 1px solid var(--line);
+}
+.livre-couverture { flex: 0 0 auto; }
+.livre-couverture img {
+  width: 120px; height: 170px; object-fit: cover;
+  border-radius: var(--radius-sm); display: block; box-shadow: var(--shadow);
+}
+.cover-placeholder.grand { width: 120px; height: 170px; font-size: 3.4rem; }
+.livre-presentation { flex: 1 1 20rem; min-width: 0; }
+.livre-presentation h1 { margin: 0; }
+.livre-sous-titre {
+  margin: .1rem 0 .3rem; font-style: italic; color: var(--muted); font-size: 1.05rem;
+}
+.livre-description { margin: var(--sp-2) 0 0; max-width: 44rem; }
+.livre-presentation .gauge { margin-top: var(--sp-3); }
+
+/* Un chapitre est une ligne cliquable : intitule a gauche, jauge au
+   milieu, pourcentage cale a droite en chiffres tabulaires pour que la
+   colonne ne danse pas d'une ligne a l'autre. */
+.chapitres { list-style: none; padding: 0; margin: 0; display: grid; gap: .4rem; }
+.chapitre {
+  display: flex; gap: var(--sp-2); align-items: center; text-decoration: none;
+  color: inherit; padding: .6rem .8rem;
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--surface); transition: border-color .16s ease, box-shadow .16s ease;
+}
+.chapitre:hover { border-color: var(--accent); box-shadow: var(--shadow); }
+.chapitre-titre { flex: 1 1 12rem; min-width: 0; font-weight: 600; }
+.chapitre-jauge { flex: 1 1 8rem; min-width: 5rem; }
+.chapitre-jauge .gauge { margin: 0; }
+.chapitre-part {
+  flex: 0 0 auto; text-align: right; font-variant-numeric: tabular-nums;
+  display: flex; gap: .4rem; align-items: baseline;
+}
 
 /* ---------- vitrine d'accueil ---------- */
 /* Page publique, distincte du catalogue : elle explique, elle ne liste

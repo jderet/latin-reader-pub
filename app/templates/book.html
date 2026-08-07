@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}{{ entry.book.title }}{% endblock %}
+{% block content %}
+{% set livre = entry.book %}
+<section class="livre">
+
+  <p class="fil"><a href="/bibliotheque">← Bibliothèque</a></p>
+
+  <header class="livre-tete">
+    <div class="livre-couverture">
+      {% if livre.cover_path %}
+        <img src="/media/{{ livre.cover_path }}" alt="">
+      {% else %}
+        <div class="cover-placeholder grand">{{ livre.title[:1] }}</div>
+      {% endif %}
+    </div>
+
+    <div class="livre-presentation">
+      <h1>{{ livre.title }}</h1>
+      {% if livre.subtitle %}<p class="livre-sous-titre">{{ livre.subtitle }}</p>{% endif %}
+      <p class="book-meta">
+        <span>{{ livre.display_author }}</span>
+        {% if livre.era %}<span>{{ livre.era }}</span>{% endif %}
+        <span>{{ entry.chapters|length }} chapitre(s)</span>
+        {% if livre.translator %}<span>trad. {{ livre.translator }}</span>{% endif %}
+      </p>
+      {% if livre.description %}
+        <p class="livre-description">{{ livre.description }}</p>
+      {% endif %}
+
+      {% if entry.spectrum %}
+        <div class="gauge" role="img"
+             aria-label="{{ (entry.ratio * 100)|round }} % du vocabulaire connu">
+          {% for tranche in entry.spectrum %}
+            <span class="g-{{ tranche.key }}" style="width: {{ tranche.share }}%"
+                  title="{{ tranche.label }} — {{ tranche.count }} mots"></span>
+          {% endfor %}
+        </div>
+        <p class="gauge-legend small">
+          {% set part = (entry.ratio * 100)|round %}
+          <b class="{{ 'ready' if part >= 90 else ('near' if part >= 70 else '') }}">{{ part }} %</b>
+          <span class="muted">connus sur {{ entry.words }} mots</span>
+        </p>
+      {% endif %}
+    </div>
+  </header>
+
+  <h2>Chapitres</h2>
+
+  {% if entry.chapters %}
+    <ol class="chapitres">
+      {% for c in entry.chapters %}
+        <li>
+          <a class="chapitre" href="/texts/{{ c.doc.id }}">
+            <span class="chapitre-titre">
+              {{ c.doc.chapter_label or c.doc.title }}
+              {% if c.doc.source_kind == "youtube" %}<span class="badge">vidéo</span>{% endif %}
+              {% if c.doc.audio_path %}<span class="badge">audio</span>{% endif %}
+            </span>
+            {% if c.coverage %}
+              {% set part = (c.coverage.known_ratio * 100)|round %}
+              <span class="chapitre-jauge">
+                <span class="gauge" role="img" aria-label="{{ part }} % du vocabulaire connu">
+                  {% for tranche in c.coverage.spectrum %}
+                    <span class="g-{{ tranche.key }}" style="width: {{ tranche.share }}%"
+                          title="{{ tranche.label }} — {{ tranche.count }} mots"></span>
+                  {% endfor %}
+                </span>
+              </span>
+              <span class="chapitre-part">
+                <b>{{ part }} %</b>
+                <span class="muted small">{{ c.coverage.total_words }} mots</span>
+              </span>
+            {% else %}
+              {# Un texte importe mais pas encore lemmatise n'a pas de
+                 couverture : on le dit, plutot que d'afficher 0 %. #}
+              <span class="chapitre-part muted small">en préparation</span>
+            {% endif %}
+          </a>
+        </li>
+      {% endfor %}
+    </ol>
+  {% else %}
+    <p class="muted">
+      Ce livre n'a pas encore de chapitre. C'est l'administrateur qui les
+      ajoute.
+    </p>
+  {% endif %}
+
+</section>
+{% endblock %}

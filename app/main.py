@@ -419,31 +419,12 @@ def library(
         champs += [t.title for t in livre.texts]
         return any(recherche in c.lower() for c in champs)
 
-    # Un livre progresse comme la moyenne de ses chapitres, ponderee par
-    # leur longueur : un chapitre de mille mots pese plus qu'un de cent.
     par_auteur: dict[str, list] = {}
     for livre in livres:
         if not concerne(livre):
             continue
-        chapitres = [
-            {"doc": t, "coverage": couvertures.get(t.id)} for t in livre.texts
-        ]
-        mots = sum(
-            (c["coverage"] or {}).get("total_words", 0) for c in chapitres
-        )
-        connus = sum(
-            (c["coverage"] or {}).get("total_words", 0)
-            * (c["coverage"] or {}).get("known_ratio", 0)
-            for c in chapitres
-        )
         par_auteur.setdefault(livre.display_author, []).append(
-            {
-                "book": livre,
-                "chapters": chapitres,
-                "words": mots,
-                "ratio": (connus / mots) if mots else 0.0,
-                "spectrum": _merge_spectrum(chapitres),
-            }
+            _book_entry(livre, couvertures)
         )
 
     isoles = [
@@ -476,6 +457,60 @@ def library(
             "progress": knowledge.global_progress(session, user.id),
         },
     )
+
+
+@app.get("/livres/{book_id}", response_class=HTMLResponse)
+def book_page(
+    request: Request,
+    book_id: int,
+    session: Session = Depends(get_session),
+    user: User = Depends(require_user),
+):
+    """Un livre et ses chapitres.
+
+    Le catalogue ne montre d'un livre que sa progression d'ensemble ;
+    c'est ici qu'on voit chapitre par chapitre ou l'on en est, et qu'on
+    lit la presentation de l'oeuvre.
+    """
+    livre = session.get(Book, book_id)
+    if livre is None:
+        raise HTTPException(404)
+
+    couvertures = {
+        t.id: (
+            knowledge.text_coverage(session, user.id, t.id)
+            if t.status == "ready"
+            else None
+        )
+        for t in livre.texts
+    }
+    return templates.TemplateResponse(
+        request, "book.html", {"entry": _book_entry(livre, couvertures)}
+    )
+
+
+def _book_entry(livre: Book, couvertures: dict) -> dict:
+    """Un livre, ses chapitres et sa progression.
+
+    Un livre progresse comme la moyenne de ses chapitres, ponderee par
+    leur longueur : un chapitre de mille mots pese plus qu'un de cent.
+    Le catalogue et la page du livre partagent ce calcul, sans quoi les
+    deux pages afficheraient deux pourcentages pour le meme livre.
+    """
+    chapitres = [{"doc": t, "coverage": couvertures.get(t.id)} for t in livre.texts]
+    mots = sum((c["coverage"] or {}).get("total_words", 0) for c in chapitres)
+    connus = sum(
+        (c["coverage"] or {}).get("total_words", 0)
+        * (c["coverage"] or {}).get("known_ratio", 0)
+        for c in chapitres
+    )
+    return {
+        "book": livre,
+        "chapters": chapitres,
+        "words": mots,
+        "ratio": (connus / mots) if mots else 0.0,
+        "spectrum": _merge_spectrum(chapitres),
+    }
 
 
 def _merge_spectrum(chapitres: list) -> list:
