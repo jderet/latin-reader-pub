@@ -35,11 +35,10 @@
       <a href="/admin/users">Comptes</a>
       <a href="/settings">Réglages</a>
     {% elif request.state.user %}
+      {# La barre garde les deux gestes de la lecture ; le reste — mots,
+         statistiques, réglages — est passé dans le tiroir du compte. #}
       <a href="/bibliotheque">Bibliothèque</a>
-      <a href="/words">Mots</a>
       <a href="/review">Réviser</a>
-      <a href="/stats">Statistiques</a>
-      <a href="/settings">Réglages</a>
     {% endif %}
   </nav>
   {% if est_admin %}
@@ -55,20 +54,40 @@
     </form>
   {% endif %}
   <span class="offline-badge small" hidden></span>
-  {% if request.state.user and request.state.user.is_guest %}
-    {# Le visiteur lit sous un compte de passage : on lui rappelle que son
-       vocabulaire ne tient qu'à ce navigateur tant qu'il n'a pas de nom. #}
+  {% if request.state.user %}
+    {% set compte = request.state.user %}
+    {# Le nom ferme la barre, et ce qui s'y rattache tient dans un tiroir
+       qui s'ouvre au survol. `:focus-within` le rend accessible au
+       clavier, et le nom reste un lien : sans survol ni styles, il mene
+       toujours quelque part. #}
     <div class="account-menu">
-      <span class="muted small">Invité</span>
-      <a href="/register">créer un compte</a>
-      <a href="/login">connexion</a>
-    </div>
-  {% elif request.state.user %}
-    <div class="account-menu">
-      <a href="/account">{{ request.state.user.display_name or request.state.user.username }}</a>
-      <form method="post" action="/logout" class="inline">
-        <button class="link">déconnexion</button>
-      </form>
+      <a class="account-nom"
+         href="{{ '/register' if compte.is_guest else '/account' }}"
+         aria-haspopup="true">
+        {{ 'Invité' if compte.is_guest else (compte.display_name or compte.username) }}
+        <span class="chevron" aria-hidden="true">▾</span>
+      </a>
+      <div class="account-tiroir">
+        {# Les pages sorties de la barre restent atteignables ici, pour
+           l'invité comme pour le compte nommé : sans quoi les retirer de
+           la barre les rendrait introuvables. #}
+        <a href="/words">Mots</a>
+        <a href="/stats">Statistiques</a>
+        <a href="/settings">Réglages</a>
+        <hr class="tiroir-sep">
+        {% if compte.is_guest %}
+          <p class="tiroir-note">
+            Votre vocabulaire ne tient qu'à ce navigateur.
+          </p>
+          <a href="/register">Créer un compte</a>
+          <a href="/login">Se connecter</a>
+        {% else %}
+          <a href="/account">Mon compte</a>
+          <form method="post" action="/logout">
+            <button type="submit">Se déconnecter</button>
+          </form>
+        {% endif %}
+      </div>
     </div>
   {% endif %}
 </header>

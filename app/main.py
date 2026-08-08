@@ -327,8 +327,13 @@ def register(
 
 @app.post("/logout")
 def logout(request: Request):
+    """On repart sur la vitrine, pas sur la connexion.
+
+    Se deconnecter n'est pas vouloir se reconnecter : depuis que le site
+    se lit sans compte, l'accueil est un endroit ou l'on peut rester.
+    """
     request.session.clear()
-    return redirect("/login")
+    return redirect("/")
 
 
 @app.get("/account", response_class=HTMLResponse)

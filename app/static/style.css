@@ -456,8 +456,40 @@ body.centered { display: flex; align-items: center; justify-content: center; min
 }
 
 /* ---------- barre supérieure : compte ---------- */
-.account-menu { margin-left: auto; display: flex; gap: .8rem; align-items: baseline; font-size: .85rem; }
-.account-menu a { color: var(--fg); }
+/* ---------- compte : le nom ferme la barre, le reste est dans un tiroir ---------- */
+.account-menu { position: relative; font-size: .85rem; }
+.account-nom {
+  display: inline-flex; align-items: center; gap: .25rem;
+  color: var(--fg); text-decoration: none; padding: .2rem 0;
+}
+.account-nom:hover { color: var(--accent); }
+.chevron { font-size: .7em; color: var(--muted); }
+
+.account-tiroir {
+  display: none; position: absolute; right: 0; top: 100%;
+  min-width: 12rem; padding: .3rem; z-index: 50;
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius); box-shadow: var(--shadow-lift);
+}
+/* Le survol ouvre, le focus aussi : un menu qui ne repondrait qu'a la
+   souris serait hors d'atteinte au clavier. */
+.account-menu:hover .account-tiroir,
+.account-menu:focus-within .account-tiroir { display: block; }
+.account-tiroir form { margin: 0; }
+.account-tiroir a,
+.account-tiroir button {
+  display: block; width: 100%; text-align: left;
+  padding: .4rem .6rem; border-radius: var(--radius-sm);
+  font: inherit; color: var(--fg); text-decoration: none;
+  background: none; border: 0; cursor: pointer;
+}
+.account-tiroir a:hover,
+.account-tiroir button:hover { background: var(--line-soft); color: var(--accent); }
+.tiroir-sep { border: 0; border-top: 1px solid var(--line); margin: .3rem .35rem; }
+.tiroir-note {
+  margin: .15rem .6rem .35rem; font-size: .76rem; color: var(--muted);
+  line-height: 1.35;
+}
 
 /* ---------- arbitrage ---------- */
 .arbitrate { list-style: none; padding: 0; margin: 0; }
@@ -629,7 +661,10 @@ body.centered { display: flex; align-items: center; justify-content: center; min
   background: var(--accent); border-radius: 2px;
   margin-right: .5rem; vertical-align: -.1em;
 }
-.topbar nav { display: flex; gap: .2rem; font-size: .88rem; }
+/* Le `auto` absorbe l'espace libre : tout ce qui suit la navigation —
+   bascule de mode, badge hors-ligne, compte — se cale a droite, et le
+   nom de l'utilisateur ferme la barre. */
+.topbar nav { display: flex; gap: .2rem; font-size: .88rem; margin-right: auto; }
 .topbar nav a {
   color: var(--muted); text-decoration: none;
   padding: .3rem .6rem; border-radius: var(--radius-sm);
