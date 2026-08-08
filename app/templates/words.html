@@ -2,7 +2,10 @@
 {% block title %}Mots{% endblock %}
 {% block content %}
 <section class="stack">
-  <h1>Mots</h1>
+  <header class="home-hero">
+    <h1 class="library-title">Mots</h1>
+    {% include "_vocab.html" %}
+  </header>
 
   <form method="get" class="filters">
     <input type="search" name="q" value="{{ q }}" placeholder="Chercher un mot ou une traduction">

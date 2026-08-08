@@ -1,0 +1,37 @@
+{# Jauge de vocabulaire, partagée par la bibliothèque et la vue « Mots ».
+
+   Chaque lemme suivi y prend la couleur de son statut, et les graduations
+   situent l'avancée sur l'échelle du CECR. Le niveau annoncé, lui, ne
+   compte que les mots réellement sus.
+
+   Attend `vocabulaire` dans le contexte (cf. knowledge.vocabulary_gauge). #}
+<div class="vocab">
+  <p class="vocab-tete">
+    <b>{{ vocabulaire.known }}</b>
+    <span class="muted">mot{{ 's' if vocabulaire.known > 1 }} connu{{ 's' if vocabulaire.known > 1 }}</span>
+    {% if vocabulaire.level %}
+      <span class="vocab-niveau" title="Niveau atteint">{{ vocabulaire.level }}</span>
+    {% endif %}
+    {% if vocabulaire.total > vocabulaire.known %}
+      <span class="muted small">sur {{ vocabulaire.total }} suivis</span>
+    {% endif %}
+  </p>
+
+  <div class="vocab-piste">
+    <div class="gauge" role="img"
+         aria-label="{{ vocabulaire.known }} mots connus sur une échelle de {{ vocabulaire.scale }}">
+      {% for tranche in vocabulaire.spectrum %}
+        <span class="g-{{ tranche.key }}" style="width: {{ tranche.share }}%"
+              title="{{ tranche.label }} — {{ tranche.count }} mots"></span>
+      {% endfor %}
+    </div>
+    {% for niveau in vocabulaire.levels %}
+      <span class="grad {{ 'atteint' if niveau.reached }}"
+            style="left: {{ niveau.position }}%"
+            title="{{ niveau.label }} — {{ niveau.threshold }} mots">
+        <span class="grad-trait"></span>
+        <span class="grad-nom">{{ niveau.label }}</span>
+      </span>
+    {% endfor %}
+  </div>
+</div>

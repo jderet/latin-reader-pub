@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Classement{% endblock %}
+{% block content %}
+<section class="stack">
+  <h1>Classement</h1>
+  <p class="muted small">
+    Les lecteurs classés par nombre de mots connus — ceux qu'ils ont
+    marqués « maîtrisé » ou « presque acquis ». Les visiteurs de passage
+    n'y figurent pas.
+  </p>
+
+  <ol class="classement">
+    {% for ligne in ranking %}
+      <li class="{{ 'moi' if ligne.user.id == me.id }}">
+        <span class="rang">{{ loop.index }}</span>
+        <span class="classement-nom">
+          {{ ligne.user.display_name or ligne.user.username }}
+          {% if ligne.user.id == me.id %}<span class="badge">vous</span>{% endif %}
+          {% if ligne.user.is_admin %}<span class="badge">admin</span>{% endif %}
+        </span>
+        {# Même jauge que la bibliothèque, à la même échelle pour tous :
+           les barres se comparent donc d'une ligne à l'autre. #}
+        {% with vocabulaire = ligne.gauge %}
+          {% include "_vocab.html" %}
+        {% endwith %}
+      </li>
+    {% endfor %}
+  </ol>
+
+  {% if not ranking %}
+    <p class="muted">Aucun lecteur inscrit pour le moment.</p>
+  {% endif %}
+</section>
+{% endblock %}

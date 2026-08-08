@@ -41,6 +41,7 @@
       <a href="/review">Réviser{% if request.state.due %}<span
           class="pastille-dues" aria-label="{{ request.state.due }} fiche(s) à réviser"
         >{{ request.state.due }}</span>{% endif %}</a>
+      <a href="/classement">Classement</a>
     {% endif %}
   </nav>
   {% if est_admin %}

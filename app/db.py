@@ -73,6 +73,9 @@ LATE_COLUMNS: dict[str, dict[str, str]] = {
     "book": {
         "author_id": "INTEGER",
     },
+    "page_read": {
+        "times": "INTEGER NOT NULL DEFAULT 1",
+    },
 }
 
 

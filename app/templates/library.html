@@ -5,14 +5,11 @@
 
   {# L'accroche vit desormais sur la vitrine, a la racine : la repeter ici
      retardait le catalogue de tout un ecran pour un lecteur qui vient
-     chercher un texte. Restent les trois chiffres, qui sont les siens. #}
+     chercher un texte. Reste la jauge, qui est la sienne. #}
   <header class="home-hero">
     <h1 class="library-title">Bibliothèque</h1>
-    <dl class="hero-stats">
-      <div><dt>Mots suivis</dt><dd>{{ progress.total_tracked }}</dd></div>
-      <div><dt>Acquis</dt><dd>{{ progress.known }}</dd></div>
-      <div><dt>Fiches dues</dt><dd>{{ queue.due }}</dd></div>
-    </dl>
+
+    {% include "_vocab.html" %}
   </header>
 
   {% if resume %}
@@ -56,7 +53,7 @@
       <h2>{{ auteur }}</h2>
       <div class="book-grid">
         {% for e in entrees %}
-          <article class="book-card">
+          <article class="book-card {{ 'lu' if e.read }}">
             <div class="book-cover">
               {% if e.book.cover_path %}
                 <img src="/media/{{ e.book.cover_path }}" alt="" loading="lazy">
@@ -69,6 +66,10 @@
                  (::after en surimpression) : on garde un HTML valide,
                  sans imbriquer les liens de chapitre dans un autre lien. #}
               <h3 class="book-title">
+                {% if e.read %}
+                  <span class="marque-lue" role="img" aria-label="Livre lu"
+                        title="Vous avez lu tous les chapitres">✓</span>
+                {% endif %}
                 <a class="book-lien" href="/livres/{{ e.book.id }}">{{ e.book.title }}</a>
               </h3>
               {% if e.book.subtitle %}<p class="book-sub">{{ e.book.subtitle }}</p>{% endif %}
@@ -82,7 +83,7 @@
             {# Jauge et chapitres passent sous l'illustration, sur toute la
                largeur : cotes a la couverture ils n'avaient qu'une colonne
                etroite, ou les intitules de chapitre se cassaient en trois. #}
-            {% if e.spectrum or e.chapters or e.resume %}
+            {% if e.spectrum or e.resume %}
             <div class="book-foot">
               {% if e.spectrum %}
                 <div class="gauge" role="img"
@@ -99,24 +100,8 @@
                 </p>
               {% endif %}
 
-              {# Les chapitres se lisent ici mais ne s'ouvrent plus d'un
-                 clic : la carte entière mène au livre, c'est là qu'on
-                 choisit son chapitre. #}
-              {% if e.chapters %}
-                <ol class="chapter-links">
-                  {% for c in e.chapters %}
-                    <li>
-                      <span>{{ c.doc.chapter_label or c.doc.title }}</span>
-                      {% if c.coverage %}
-                        <span class="muted small">
-                          {{ (c.coverage.known_ratio * 100)|round }} %
-                        </span>
-                      {% endif %}
-                    </li>
-                  {% endfor %}
-                </ol>
-              {% endif %}
-
+              {# Le sommaire vit sur la page du livre : la carte s'en tient
+                 à la progression d'ensemble et au bouton de reprise. #}
               {% if e.resume %}
                 {# Seule exception à la surimpression de la carte : ce
                    bouton mène ailleurs qu'à la page du livre. #}
@@ -145,6 +130,9 @@
               {% if row.doc.id in lus %}
                 <span class="marque-lue" role="img" aria-label="Texte lu"
                       title="Vous avez lu ce texte">✓</span>
+                {% if lus[row.doc.id] > 1 %}
+                  <span class="marque-fois">({{ lus[row.doc.id] }}x)</span>
+                {% endif %}
               {% endif %}
               <a class="text-title" href="/texts/{{ row.doc.id }}">{{ row.doc.title }}</a>
               {% if row.doc.author %}<span class="muted">{{ row.doc.author }}</span>{% endif %}

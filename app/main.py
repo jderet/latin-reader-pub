@@ -52,6 +52,7 @@ from .models import (
     TextDoc,
     TextToken,
     User,
+    utcnow,
 )
 from .nlp.registry import available_engines
 from .services import auth as auth_svc
@@ -445,12 +446,13 @@ def library(
         return any(recherche in c.lower() for c in champs)
 
     lectures = _pages_lues(session, user.id)
+    lus = _lectures(session, user.id)
     par_auteur: dict[str, list] = {}
     for livre in livres:
         if not concerne(livre):
             continue
         par_auteur.setdefault(livre.display_author, []).append(
-            _book_entry(livre, couvertures, lectures)
+            _book_entry(livre, couvertures, lectures, lus)
         )
 
     isoles = [
@@ -480,9 +482,29 @@ def library(
             "resume": reprise,
             "q": q,
             "queue": cards_svc.queue_stats(session, user.id),
-            "progress": knowledge.global_progress(session, user.id),
-            "lus": _textes_lus(session, user.id),
+            "vocabulaire": knowledge.vocabulary_gauge(session, user.id),
+            "lus": lus,
         },
+    )
+
+
+@app.get("/classement", response_class=HTMLResponse)
+def ranking_page(
+    request: Request,
+    session: Session = Depends(get_session),
+    user: User = Depends(require_user),
+):
+    """Les lecteurs classes par vocabulaire connu.
+
+    Les comptes de passage en sont exclus : ce sont des visiteurs
+    anonymes, portant un identifiant tire au sort, et le classement
+    n'aurait aucun sens rempli de « invite-7fb26c8c4bdb ».
+    """
+    lecteurs = auth_svc.list_users(session)
+    return templates.TemplateResponse(
+        request,
+        "ranking.html",
+        {"ranking": knowledge.vocabulary_ranking(session, lecteurs), "me": user},
     )
 
 
@@ -511,12 +533,15 @@ def book_page(
         )
         for t in livre.texts
     }
+    lus = _lectures(session, user.id)
     return templates.TemplateResponse(
         request,
         "book.html",
         {
-            "entry": _book_entry(livre, couvertures, _pages_lues(session, user.id)),
-            "lus": _textes_lus(session, user.id),
+            "entry": _book_entry(
+                livre, couvertures, _pages_lues(session, user.id), lus
+            ),
+            "lus": lus,
         },
     )
 
@@ -535,32 +560,42 @@ def _pages_lues(session: Session, user_id: int) -> dict[int, dt.datetime]:
     return {text_id: lu_le for text_id, lu_le in lignes}
 
 
-def _textes_lus(session: Session, user_id: int) -> set[int]:
-    """Les textes dont toutes les pages ont ete declarees lues.
+def _lectures(session: Session, user_id: int) -> dict[int, int]:
+    """Combien de fois chaque texte a ete lu de bout en bout.
 
     « Lu » porte sur le texte entier, pas sur une page : un chapitre de
     trois pages dont une seule est cochee n'est pas lu. Pour l'immense
     majorite des textes, qui tiennent en une page, les deux reviennent au
     meme.
+
+    Le nombre de lectures est donc le **minimum** des passages page a
+    page : avoir relu trois fois la premiere page et une fois la seconde
+    fait une lecture du texte, pas trois.
+
+    Un texte absent de la table n'est pas lu et n'apparait pas ici.
     """
     comptes = session.execute(
-        select(PageRead.text_id, func.count(PageRead.page_idx))
+        select(
+            PageRead.text_id,
+            func.count(PageRead.page_idx),
+            func.min(PageRead.times),
+        )
         .where(PageRead.user_id == user_id)
         .group_by(PageRead.text_id)
     ).all()
     if not comptes:
-        return set()
+        return {}
     pagination = dict(
         session.execute(
             select(TextDoc.id, TextDoc.page_count).where(
-                TextDoc.id.in_([text_id for text_id, _ in comptes])
+                TextDoc.id.in_([text_id for text_id, _, _ in comptes])
             )
         ).all()
     )
     return {
-        text_id
-        for text_id, lues in comptes
-        if lues >= (pagination.get(text_id) or 1)
+        text_id: tours or 1
+        for text_id, pages_lues, tours in comptes
+        if pages_lues >= (pagination.get(text_id) or 1)
     }
 
 
@@ -588,7 +623,10 @@ def _chapitre_suivant(livre: Book, lectures: dict[int, dt.datetime]):
 
 
 def _book_entry(
-    livre: Book, couvertures: dict, lectures: dict[int, dt.datetime] | None = None
+    livre: Book,
+    couvertures: dict,
+    lectures: dict[int, dt.datetime] | None = None,
+    lus: dict[int, int] | None = None,
 ) -> dict:
     """Un livre, ses chapitres et sa progression.
 
@@ -611,6 +649,11 @@ def _book_entry(
         "ratio": (connus / mots) if mots else 0.0,
         "spectrum": _merge_spectrum(chapitres),
         "resume": _chapitre_suivant(livre, lectures or {}),
+        # Un livre est lu quand tous ses chapitres le sont — et qu'il en a.
+        # Sans cette seconde condition, un rayon encore vide passerait pour
+        # lu : « tous » est vrai d'un ensemble vide.
+        "read": bool(livre.texts)
+        and all(t.id in (lus or {}) for t in livre.texts),
     }
 
 
@@ -693,7 +736,7 @@ def delete_text(
 # --------------------------------------------------------------------------
 # Lecture
 # --------------------------------------------------------------------------
-def _page_spectrum(tokens: list, statuses: dict) -> dict:
+def _page_spectrum(tokens: list, statuses: dict, lemmas: dict | None = None) -> dict:
     """Repartition du vocabulaire de la page, du mieux su au jamais vu.
 
     Meme lecture que la jauge de la bibliotheque : les couleurs sont
@@ -708,7 +751,12 @@ def _page_spectrum(tokens: list, statuses: dict) -> dict:
         if not tok.is_word or not tok.chosen_lemma_id:
             continue
         statut = statuses.get(tok.chosen_lemma_id)
-        if statut is not None and statut.is_ignored:
+        # Meme regle que la jauge du texte : noms propres et chiffres
+        # romains sortent du comptage, sans quoi les deux barres du
+        # lecteur se contrediraient.
+        if knowledge.is_ignored_token(
+            tok, (lemmas or {}).get(tok.chosen_lemma_id), statut
+        ):
             continue
         total += 1
         compte["unseen" if statut is None else f"s{statut.status}"] += 1
@@ -839,13 +887,15 @@ def read_text(
             "pending": disamb_svc.pending_count(session, text_id, AMBIGUITY_MARGIN),
             "unseen_count": len(unseen_lemmas),
             # Jauge de la page affichee, figee au chargement.
-            "page_coverage": _page_spectrum(tokens, statuses),
+            "page_coverage": _page_spectrum(tokens, statuses, lemmas),
             "page_read": session.get(PageRead, (user.id, text_id, page)) is not None,
             "pages_read": session.scalar(
                 select(func.count())
                 .select_from(PageRead)
                 .where(PageRead.user_id == user.id, PageRead.text_id == text_id)
             ) or 0,
+            # 0 tant que le texte n'a pas ete lu de bout en bout.
+            "readings": _lectures(session, user.id).get(text_id, 0),
             # Un texte sans mot illustre n'a pas besoin de gouttieres :
             # la place revient a la marge, et le seuil de bascule baisse
             # d'autant.
@@ -1365,6 +1415,7 @@ def words_page(
             "status": status,
             "image": image,
             "counts": knowledge.status_counts(session, user.id),
+            "vocabulaire": knowledge.vocabulary_gauge(session, user.id),
             "prefs": settings_svc.load(session, user.id),
         },
     )
@@ -2961,8 +3012,14 @@ def mark_page_read(
             "validated"
         ]
 
-    if session.get(PageRead, (user.id, text_id, page)) is None:
+    ligne = session.get(PageRead, (user.id, text_id, page))
+    if ligne is None:
         session.add(PageRead(user_id=user.id, text_id=text_id, page_idx=page))
+    else:
+        # Repasser sur une page deja lue, c'est la relire : le bouton
+        # affiche d'ailleurs « Page lue — relire ».
+        ligne.times += 1
+        ligne.read_at = utcnow()
     session.flush()
 
     lues = session.scalar(
@@ -2970,4 +3027,9 @@ def mark_page_read(
         .select_from(PageRead)
         .where(PageRead.user_id == user.id, PageRead.text_id == text_id)
     ) or 0
-    return {"validated": valides, "pages_read": lues, "pages": doc.page_count}
+    return {
+        "validated": valides,
+        "pages_read": lues,
+        "pages": doc.page_count,
+        "readings": _lectures(session, user.id).get(text_id, 0),
+    }

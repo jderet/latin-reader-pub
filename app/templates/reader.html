@@ -153,6 +153,10 @@
         {% if doc.author %}{{ doc.author }} · {% endif %}
         {{ doc.word_count }} mots ·
         {% if doc.page_count > 1 %}{{ pages_read }}/{{ doc.page_count }} pages lues ·{% endif %}
+        {% if readings %}
+          <span class="marque-lue">✓</span>
+          <span class="texte-lu">Texte lu {{ readings }} fois</span> ·
+        {% endif %}
         {{ pending }} ambiguïtés signalées ·
         moteur {{ doc.engine }} {{ doc.engine_version }}
       </p>

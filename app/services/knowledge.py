@@ -95,6 +95,29 @@ def statuses_for_tokens(
     return {r.lemma_id: r for r in rows}
 
 
+def is_ignored_token(tok, lemma, status) -> bool:
+    """Ce mot est-il exclu du comptage ?
+
+    Trois manieres d'etre ignore, qu'il faut traiter ensemble sous peine
+    de jauges qui se contredisent :
+
+    - le lecteur l'a ignore (`LemmaStatus.is_ignored`) ;
+    - l'administrateur l'a marque nom propre (`Lemma.is_ignored`) ;
+    - c'en est un, ou un chiffre romain, reconnu a l'analyse.
+
+    Les deux derniers cas n'etaient pas exclus : un texte plein de noms
+    de peuples et de fleuves affichait une large tranche « jamais
+    rencontre » qu'aucune lecture n'aurait jamais resorbee.
+    """
+    from .importer import is_auto_ignored
+
+    if status is not None and status.is_ignored:
+        return True
+    if lemma is None:
+        return False
+    return bool(lemma.is_ignored) or is_auto_ignored(lemma.upos, tok.surface)
+
+
 def text_coverage(session: Session, user_id: int, text_id: int) -> dict:
     """Repartition des occurrences par statut, plus les inconnus frequents."""
     tokens = session.scalars(
@@ -103,13 +126,21 @@ def text_coverage(session: Session, user_id: int, text_id: int) -> dict:
         )
     ).all()
     statuses = statuses_for_tokens(session, user_id, tokens)
+    lemmes = {
+        lemme.id: lemme
+        for lemme in session.scalars(
+            select(Lemma).where(
+                Lemma.id.in_({t.chosen_lemma_id for t in tokens if t.chosen_lemma_id})
+            )
+        ).all()
+    }
 
     buckets = Counter()
     unknown_freq: Counter[int] = Counter()
     total = 0
     for tok in tokens:
         st = statuses.get(tok.chosen_lemma_id or -1)
-        if st and st.is_ignored:
+        if is_ignored_token(tok, lemmes.get(tok.chosen_lemma_id or -1), st):
             buckets["ignore"] += 1
             continue
         total += 1
@@ -179,6 +210,116 @@ def global_progress(session: Session, user_id: int) -> dict:
         "by_status": by_status,
         "total_tracked": sum(by_status.values()),
     }
+
+
+# --------------------------------------------------------------------------
+# Taille du vocabulaire, sur l'echelle du CECR
+# --------------------------------------------------------------------------
+# Seuils indicatifs de vocabulaire actif par niveau. Ils ne sont pas
+# normatifs — le CECR decrit des competences, pas des comptes de mots —
+# mais ils donnent au lecteur un ordre de grandeur de son avancee.
+CEFR_LEVELS: tuple[tuple[int, str], ...] = (
+    (800, "A1"),
+    (1800, "A2"),
+    (3500, "B1"),
+    (5500, "B2"),
+    (8000, "C1"),
+    (10000, "C2"),
+)
+
+
+def vocabulary_gauge(session: Session, user_id: int) -> dict:
+    """Le vocabulaire du lecteur, ventile par statut et rapporte au CECR.
+
+    Deux nombres a ne pas confondre : la jauge dessine **tous** les
+    lemmes suivis, chacun de la couleur de son statut, tandis que le
+    niveau atteint ne compte que les mots reellement sus (statut 0 ou 1,
+    cf. KNOWN_THRESHOLD). Un lecteur qui a marque trois mille mots en
+    rouge n'est pas B1.
+
+    L'echelle s'etire au-dela de C2 si le vocabulaire le depasse : la
+    jauge ne deborde jamais, et les graduations restent a leur place
+    relative.
+    """
+    rows = session.execute(
+        select(LemmaStatus.status, func.count())
+        .where(LemmaStatus.user_id == user_id, LemmaStatus.is_ignored.is_(False))
+        .group_by(LemmaStatus.status)
+    ).all()
+    return gauge_from_counts({statut: nombre for statut, nombre in rows})
+
+
+def gauge_from_counts(par_statut: dict[int, int]) -> dict:
+    """Met en forme une jauge a partir d'un decompte par statut.
+
+    Fonction pure, sans base : la jauge d'un lecteur et celles du
+    classement sortent d'ici, si bien que l'echelle et les seuils ne
+    peuvent pas diverger d'une page a l'autre.
+    """
+    total = sum(par_statut.values())
+    connus = sum(n for s, n in par_statut.items() if s <= KNOWN_THRESHOLD)
+    echelle = max(CEFR_LEVELS[-1][0], total)
+
+    spectre = [
+        {
+            "key": f"s{statut}",
+            "label": STATUS_LABELS[statut],
+            "count": par_statut[statut],
+            "share": round(100 * par_statut[statut] / echelle, 2),
+        }
+        for statut in (0, 1, 2, 3, 4)
+        if par_statut.get(statut)
+    ]
+    graduations = [
+        {
+            "threshold": seuil,
+            "label": nom,
+            "position": round(100 * seuil / echelle, 2),
+            "reached": connus >= seuil,
+        }
+        for seuil, nom in CEFR_LEVELS
+    ]
+    atteints = [g["label"] for g in graduations if g["reached"]]
+    return {
+        "spectrum": spectre,
+        "total": total,
+        "known": connus,
+        "scale": echelle,
+        "levels": graduations,
+        "level": atteints[-1] if atteints else None,
+    }
+
+
+def vocabulary_ranking(session: Session, users: list) -> list[dict]:
+    """Les lecteurs classes par nombre de mots connus.
+
+    Une seule requete groupee pour tout le monde : une jauge par compte
+    en aurait fait autant que de lecteurs.
+
+    L'echelle de chaque jauge reste celle du CECR, la meme pour tous, si
+    bien que les barres se comparent a l'oeil d'une ligne a l'autre.
+    """
+    rows = session.execute(
+        select(LemmaStatus.user_id, LemmaStatus.status, func.count())
+        .where(
+            LemmaStatus.is_ignored.is_(False),
+            LemmaStatus.user_id.in_([u.id for u in users]) if users else False,
+        )
+        .group_by(LemmaStatus.user_id, LemmaStatus.status)
+    ).all()
+
+    comptes: dict[int, dict[int, int]] = defaultdict(dict)
+    for user_id, statut, nombre in rows:
+        comptes[user_id][statut] = nombre
+
+    classement = [
+        {"user": compte, "gauge": gauge_from_counts(comptes.get(compte.id, {}))}
+        for compte in users
+    ]
+    # A egalite de mots sus, le plus petit vocabulaire suivi passe devant :
+    # savoir mille mots sur mille vaut mieux que mille sur cinq mille.
+    classement.sort(key=lambda l: (-l["gauge"]["known"], l["gauge"]["total"]))
+    return classement
 
 
 # --------------------------------------------------------------------------

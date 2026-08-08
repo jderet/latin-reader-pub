@@ -83,6 +83,10 @@ class PageRead(Base):
     )
     page_idx: Mapped[int] = mapped_column(Integer, primary_key=True)
     read_at: Mapped[dt.datetime] = mapped_column(UtcDateTime, default=utcnow)
+    # Nombre de passages sur cette page. Relire est un geste courant en
+    # langue ancienne, et la ligne existait deja : on compte plutot que
+    # d'empiler une ligne par lecture.
+    times: Mapped[int] = mapped_column(Integer, default=1)
 
 
 # --------------------------------------------------------------------------

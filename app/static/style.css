@@ -799,15 +799,39 @@ button[type=submit]:hover, .validate:hover, .listen:hover {
    `auto` pousse les chiffres du lecteur contre le bord droit. */
 .library-title { margin: 0 auto 0 0; }
 .hero-lead { color: var(--muted); max-width: 34rem; margin: 0; }
-.hero-stats { display: flex; gap: var(--sp-3); margin: 0; }
-.hero-stats dt {
-  font-size: .7rem; text-transform: uppercase; letter-spacing: .07em;
-  color: var(--muted);
+/* ---------- jauge de vocabulaire ---------- */
+/* Les trois compteurs de l'en-tete ont cede la place a une jauge : un
+   nombre de mots ne dit rien tant qu'on ne le rapporte a rien. */
+.vocab { flex: 1 1 22rem; max-width: 34rem; min-width: 0; }
+.vocab-tete {
+  display: flex; gap: .45rem; align-items: baseline; flex-wrap: wrap;
+  margin: 0 0 .5rem;
 }
-.hero-stats dd {
-  margin: 0; font-size: 1.7rem; font-weight: 600;
+.vocab-tete b {
+  font-size: 1.7rem; font-weight: 600;
   font-variant-numeric: tabular-nums; letter-spacing: -.02em;
 }
+.vocab-niveau {
+  border: 1px solid var(--accent); color: var(--accent);
+  border-radius: 99px; padding: .05rem .5rem;
+  font-size: .72rem; font-weight: 700; letter-spacing: .04em;
+}
+
+/* Les graduations se posent en surimpression de la jauge : leur trait la
+   traverse, leur nom se lit dessous. D'ou la reserve en bas de piste. */
+.vocab-piste { position: relative; padding-bottom: 1.05rem; }
+.vocab-piste .gauge { margin: 0; }
+.grad {
+  position: absolute; top: 0; transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center;
+}
+.grad-trait { width: 1px; height: 13px; background: var(--muted); opacity: .45; }
+.grad-nom {
+  margin-top: .1rem; font-size: .62rem; letter-spacing: .05em;
+  color: var(--muted);
+}
+.grad.atteint .grad-trait { background: var(--valide); opacity: 1; }
+.grad.atteint .grad-nom { color: var(--valide); font-weight: 700; }
 
 .resume-card {
   display: flex; gap: .9rem; align-items: center;
@@ -883,12 +907,6 @@ button[type=submit]:hover, .validate:hover, .listen:hover {
   font-size: .74rem; color: var(--muted);
 }
 .book-meta span:not(:last-child)::after { content: ' ·'; }
-/* Simple sommaire : les chapitres ne s'ouvrent plus d'ici, la carte
-   entiere mene au livre. */
-.chapter-links { list-style: none; padding: 0; margin: .4rem 0 0; font-size: .85rem; }
-.chapter-links li { display: flex; gap: .4rem; align-items: baseline; }
-.chapter-links .muted { margin-left: auto; font-variant-numeric: tabular-nums; }
-
 .book-reprise { margin: .6rem 0 0; text-align: right; }
 .cta-reprise {
   /* Au-dessus de la surimpression de la carte : c'est le seul element
@@ -902,6 +920,26 @@ button[type=submit]:hover, .validate:hover, .listen:hover {
 }
 .cta-reprise:hover { background: var(--accent-soft); }
 .cta-reprise .muted { font-weight: 400; }
+
+/* ---------- classement ---------- */
+.classement { list-style: none; padding: 0; margin: 0; display: grid; gap: .5rem; }
+.classement li {
+  display: flex; gap: var(--sp-2); align-items: center; flex-wrap: wrap;
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: .7rem .9rem; box-shadow: var(--shadow);
+}
+.classement li.moi { border-color: var(--accent); background: var(--accent-soft); }
+.rang {
+  flex: 0 0 1.6rem; text-align: right; font-weight: 700;
+  color: var(--muted); font-variant-numeric: tabular-nums;
+}
+.classement-nom {
+  flex: 0 0 11rem; min-width: 0; font-weight: 600;
+  display: flex; gap: .4rem; align-items: baseline; flex-wrap: wrap;
+}
+/* La jauge occupe le reste de la ligne, a la meme echelle pour tous. */
+.classement .vocab { flex: 1 1 18rem; max-width: none; }
+.classement .vocab-tete b { font-size: 1.15rem; }
 
 /* ---------- pastille des fiches dues ---------- */
 /* Elle n'est rendue que s'il y a des fiches : pas de regle pour le zero,
@@ -921,8 +959,11 @@ button[type=submit]:hover, .validate:hover, .listen:hover {
    melangee au fond plutot que posee en dur : elle suit ainsi le theme
    clair comme le sombre, ou --s1 et --surface changent tous deux. */
 .marque-lue { color: var(--valide); font-weight: 700; }
+.marque-fois { color: var(--valide); font-size: .78rem; font-weight: 600; }
+.texte-lu { color: var(--valide); font-weight: 600; }
 .chapitre.lu,
-.texts li.lu {
+.texts li.lu,
+.book-card.lu {
   background: color-mix(in srgb, var(--s1) 22%, var(--surface));
   border-color: color-mix(in srgb, var(--s1) 55%, var(--line));
 }

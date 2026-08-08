@@ -56,6 +56,9 @@
               {% if c.doc.id in lus %}
                 <span class="marque-lue" role="img" aria-label="Texte lu"
                       title="Vous avez lu ce texte">✓</span>
+                {% if lus[c.doc.id] > 1 %}
+                  <span class="marque-fois">({{ lus[c.doc.id] }}x)</span>
+                {% endif %}
               {% endif %}
               {{ c.doc.chapter_label or c.doc.title }}
               {% if c.doc.source_kind == "youtube" %}<span class="badge">vidéo</span>{% endif %}
