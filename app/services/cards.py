@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..models import (
@@ -170,6 +170,24 @@ def due_queue(
     queue = reviews + new_cards
     queue.sort(key=lambda c: (not c.is_new, c.due_at))
     return queue[:limit]
+
+
+def due_count(session: Session, user_id: int, now: dt.datetime | None = None) -> int:
+    """Le nombre de fiches echues, compte en base.
+
+    `queue_stats` charge toutes les fiches pour les ventiler ; la barre de
+    navigation s'affiche a chaque page et n'a besoin que de ce nombre.
+    """
+    now = now or utcnow()
+    return session.scalar(
+        select(func.count())
+        .select_from(Card)
+        .where(
+            Card.user_id == user_id,
+            Card.is_suspended.is_(False),
+            Card.due_at <= now,
+        )
+    ) or 0
 
 
 def queue_stats(session: Session, user_id: int, now: dt.datetime | None = None) -> dict:

@@ -20,7 +20,7 @@
       {% if livre.subtitle %}<p class="livre-sous-titre">{{ livre.subtitle }}</p>{% endif %}
       <p class="book-meta">
         <span>{{ livre.display_author }}</span>
-        {% if livre.era %}<span>{{ livre.era }}</span>{% endif %}
+        {% if livre.display_era %}<span>{{ livre.display_era }}</span>{% endif %}
         <span>{{ entry.chapters|length }} chapitre(s)</span>
         {% if livre.translator %}<span>trad. {{ livre.translator }}</span>{% endif %}
       </p>
@@ -51,8 +51,12 @@
     <ol class="chapitres">
       {% for c in entry.chapters %}
         <li>
-          <a class="chapitre" href="/texts/{{ c.doc.id }}">
+          <a class="chapitre {{ 'lu' if c.doc.id in lus }}" href="/texts/{{ c.doc.id }}">
             <span class="chapitre-titre">
+              {% if c.doc.id in lus %}
+                <span class="marque-lue" role="img" aria-label="Texte lu"
+                      title="Vous avez lu ce texte">✓</span>
+              {% endif %}
               {{ c.doc.chapter_label or c.doc.title }}
               {% if c.doc.source_kind == "youtube" %}<span class="badge">vidéo</span>{% endif %}
               {% if c.doc.audio_path %}<span class="badge">audio</span>{% endif %}

@@ -17,6 +17,8 @@
   --accent: #2f5d8a;
   --accent-soft: #e8eef5;
   --danger: #a33;
+  /* Vert de validation : le meme que le « lu » et les jauges pleines. */
+  --valide: #4f8f3a;
 
   /* Echelle d'espacement : quatre valeurs suffisent, et leur repetition
      fait l'unite visuelle. */
@@ -31,6 +33,7 @@
     --line: #35322d; --line-soft: #2a2723;
     --s4: #6b332c; --s3: #6b4d24; --s2: #5d5522; --s1: #33502c;
     --accent: #8fb4d8; --accent-soft: #23303c;
+    --valide: #7fbf62;
     --shadow: 0 1px 2px rgba(0,0,0,.3), 0 4px 14px rgba(0,0,0,.25);
     --shadow-lift: 0 2px 6px rgba(0,0,0,.4), 0 12px 28px rgba(0,0,0,.35);
   }
@@ -857,7 +860,6 @@ button[type=submit]:hover, .validate:hover, .listen:hover {
 .book-lien { text-decoration: none; color: inherit; }
 .book-lien::after { content: ''; position: absolute; inset: 0; border-radius: var(--radius); }
 .book-lien:hover { text-decoration: underline; }
-.book-card .chapter-links { position: relative; z-index: 1; }
 .book-cover { grid-area: cover; }
 .book-cover img {
   width: 68px; height: 96px; object-fit: cover;
@@ -881,11 +883,50 @@ button[type=submit]:hover, .validate:hover, .listen:hover {
   font-size: .74rem; color: var(--muted);
 }
 .book-meta span:not(:last-child)::after { content: ' ·'; }
+/* Simple sommaire : les chapitres ne s'ouvrent plus d'ici, la carte
+   entiere mene au livre. */
 .chapter-links { list-style: none; padding: 0; margin: .4rem 0 0; font-size: .85rem; }
 .chapter-links li { display: flex; gap: .4rem; align-items: baseline; }
-.chapter-links a { text-decoration: none; }
-.chapter-links a:hover { text-decoration: underline; }
 .chapter-links .muted { margin-left: auto; font-variant-numeric: tabular-nums; }
+
+.book-reprise { margin: .6rem 0 0; text-align: right; }
+.cta-reprise {
+  /* Au-dessus de la surimpression de la carte : c'est le seul element
+     qui doit mener ailleurs qu'a la page du livre. */
+  position: relative; z-index: 1;
+  display: inline-flex; flex-direction: column; align-items: flex-end;
+  gap: .1rem; text-decoration: none; font-size: .85rem; font-weight: 600;
+  padding: .35rem .7rem; border-radius: var(--radius);
+  color: var(--accent); border: 1px solid var(--accent);
+  background: var(--surface);
+}
+.cta-reprise:hover { background: var(--accent-soft); }
+.cta-reprise .muted { font-weight: 400; }
+
+/* ---------- texte lu ---------- */
+/* Un texte dont toutes les pages ont ete declarees lues. La teinte est
+   melangee au fond plutot que posee en dur : elle suit ainsi le theme
+   clair comme le sombre, ou --s1 et --surface changent tous deux. */
+.marque-lue { color: var(--valide); font-weight: 700; }
+.chapitre.lu,
+.texts li.lu {
+  background: color-mix(in srgb, var(--s1) 22%, var(--surface));
+  border-color: color-mix(in srgb, var(--s1) 55%, var(--line));
+}
+.chapitre.lu:hover { border-color: var(--valide); }
+
+/* ---------- auteurs (gestion) ---------- */
+.chapter-move { display: inline-flex; gap: .15rem; }
+.chapter-move button { padding: 0 .25rem; line-height: 1; }
+.chapter-move button[disabled] { opacity: .3; cursor: default; }
+
+.authorlist { list-style: none; padding: 0; margin: 0 0 var(--sp-2); }
+.authorlist li {
+  display: flex; gap: .6rem; align-items: center; flex-wrap: wrap;
+  padding: .35rem 0; border-bottom: 1px solid var(--line-soft);
+}
+.author-row { display: flex; gap: .4rem; align-items: center; flex-wrap: wrap; }
+.author-row input { width: 12rem; }
 
 /* ---------- page d'un livre ---------- */
 .fil { margin: 0 0 var(--sp-2); font-size: .82rem; }

@@ -70,7 +70,54 @@ LATE_COLUMNS: dict[str, dict[str, str]] = {
         "image_path": "VARCHAR(240)",
         "image_alt": "VARCHAR(240)",
     },
+    "book": {
+        "author_id": "INTEGER",
+    },
 }
+
+
+def backfill_authors() -> int:
+    """Reporte les auteurs saisis en texte libre vers la table `author`.
+
+    Les livres portaient jusqu'ici un nom d'auteur en clair. On en tire
+    la liste des auteurs, une entree par nom distinct, et on rattache
+    chaque livre au sien. L'ancienne colonne n'est pas effacee : elle ne
+    coute rien et permet de revenir en arriere.
+
+    Idempotent — un livre deja rattache n'est pas touche.
+    """
+    # Par l'ORM et non en SQL brut : les valeurs par defaut du modele
+    # (`created_at`) sont posees cote Python, un INSERT direct les
+    # manquerait.
+    from sqlalchemy import select
+
+    from .models import Author, Book
+
+    crees = 0
+    with session_scope() as session:
+        a_reprendre = session.scalars(
+            select(Book).where(
+                Book.author_id.is_(None), Book.author_name.isnot(None)
+            )
+        ).all()
+        connus = {a.name: a for a in session.scalars(select(Author)).all()}
+        for livre in a_reprendre:
+            nom = (livre.author_name or "").strip()
+            if not nom:
+                continue
+            auteur = connus.get(nom)
+            if auteur is None:
+                # L'epoque du premier livre rencontre : elle vaut pour
+                # toute l'oeuvre, la ressaisir n'aurait pas de sens.
+                auteur = Author(name=nom, era=livre.era)
+                session.add(auteur)
+                session.flush()
+                connus[nom] = auteur
+                crees += 1
+            livre.author_id = auteur.id
+    if crees:
+        log.info("auteurs repris depuis les livres : %d", crees)
+    return crees
 
 
 def migrate() -> None:
@@ -92,8 +139,11 @@ def migrate() -> None:
 
 
 def init_db() -> None:
+    # L'ordre compte : `create_all` cree la table `author`, que le report
+    # remplit, mais `migrate` doit avoir ajoute `book.author_id` avant.
     migrate()
     Base.metadata.create_all(engine)
+    backfill_authors()
 
 
 def get_session() -> Iterator[Session]:

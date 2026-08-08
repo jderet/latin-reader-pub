@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime as dt
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -42,6 +43,7 @@ from .deps import (
     require_user,
 )
 from .models import (
+    Author,
     Book,
     Card,
     Lemma,
@@ -167,10 +169,11 @@ async def _attach_user(request: Request, call_next):
     donc l'utilisateur sur `request.state`, lu par la barre de navigation.
     """
     request.state.user = None
-    request.state.mode = MODE_ADMIN
+    # La lecture est le mode par defaut, administrateur compris.
+    request.state.mode = MODE_USER
     try:
         user_id = request.session.get("user_id")
-        request.state.mode = request.session.get(MODE_KEY, MODE_ADMIN)
+        request.state.mode = request.session.get(MODE_KEY, MODE_USER)
     except Exception:  # noqa: BLE001 - session absente (fichiers statiques)
         user_id = None
     if user_id:
@@ -252,7 +255,7 @@ def login_page(request: Request, user: User | None = Depends(current_user)):
     # Un invite n'est pas « connecte » : il doit pouvoir rejoindre son
     # compte nomme, quitte a abandonner ce qu'il a marque en passant.
     if user is not None and not user.is_guest:
-        return redirect("/admin" if user.is_admin else "/bibliotheque")
+        return redirect("/bibliotheque")
     return templates.TemplateResponse(request, "login.html", {"mode": "login"})
 
 
@@ -273,13 +276,15 @@ def login(
             status_code=401,
         )
     request.session["user_id"] = account.id
-    return redirect("/admin" if account.is_admin else "/bibliotheque")
+    # Tout le monde arrive dans le catalogue, administrateur compris : on
+    # ouvre l'application pour lire, la gestion est a un clic.
+    return redirect("/bibliotheque")
 
 
 @app.get("/register", response_class=HTMLResponse)
 def register_page(request: Request, user: User | None = Depends(current_user)):
     if user is not None and not user.is_guest:
-        return redirect("/admin" if user.is_admin else "/bibliotheque")
+        return redirect("/bibliotheque")
     return templates.TemplateResponse(
         request, "login.html", {"mode": "register", "guest": user is not None}
     )
@@ -406,7 +411,7 @@ def library(
     recherche = q.strip().lower()
 
     livres = session.scalars(
-        select(Book).order_by(Book.sort_order, Book.author, Book.title)
+        select(Book).order_by(Book.sort_order, Book.title)
     ).all()
     textes = session.scalars(
         select(TextDoc).order_by(TextDoc.chapter_idx, TextDoc.created_at.desc())
@@ -420,16 +425,17 @@ def library(
     def concerne(livre: Book) -> bool:
         if not recherche:
             return True
-        champs = [livre.title, livre.subtitle or "", livre.author or ""]
+        champs = [livre.title, livre.subtitle or "", livre.display_author]
         champs += [t.title for t in livre.texts]
         return any(recherche in c.lower() for c in champs)
 
+    lectures = _pages_lues(session, user.id)
     par_auteur: dict[str, list] = {}
     for livre in livres:
         if not concerne(livre):
             continue
         par_auteur.setdefault(livre.display_author, []).append(
-            _book_entry(livre, couvertures)
+            _book_entry(livre, couvertures, lectures)
         )
 
     isoles = [
@@ -460,6 +466,7 @@ def library(
             "q": q,
             "queue": cards_svc.queue_stats(session, user.id),
             "progress": knowledge.global_progress(session, user.id),
+            "lus": _textes_lus(session, user.id),
         },
     )
 
@@ -490,11 +497,84 @@ def book_page(
         for t in livre.texts
     }
     return templates.TemplateResponse(
-        request, "book.html", {"entry": _book_entry(livre, couvertures)}
+        request,
+        "book.html",
+        {
+            "entry": _book_entry(livre, couvertures, _pages_lues(session, user.id)),
+            "lus": _textes_lus(session, user.id),
+        },
     )
 
 
-def _book_entry(livre: Book, couvertures: dict) -> dict:
+def _pages_lues(session: Session, user_id: int) -> dict[int, dt.datetime]:
+    """Quand chaque texte a ete declare lu pour la derniere fois.
+
+    Une seule requete pour tout le catalogue : interroger livre par livre
+    en produirait autant que de rayons.
+    """
+    lignes = session.execute(
+        select(PageRead.text_id, func.max(PageRead.read_at))
+        .where(PageRead.user_id == user_id)
+        .group_by(PageRead.text_id)
+    ).all()
+    return {text_id: lu_le for text_id, lu_le in lignes}
+
+
+def _textes_lus(session: Session, user_id: int) -> set[int]:
+    """Les textes dont toutes les pages ont ete declarees lues.
+
+    « Lu » porte sur le texte entier, pas sur une page : un chapitre de
+    trois pages dont une seule est cochee n'est pas lu. Pour l'immense
+    majorite des textes, qui tiennent en une page, les deux reviennent au
+    meme.
+    """
+    comptes = session.execute(
+        select(PageRead.text_id, func.count(PageRead.page_idx))
+        .where(PageRead.user_id == user_id)
+        .group_by(PageRead.text_id)
+    ).all()
+    if not comptes:
+        return set()
+    pagination = dict(
+        session.execute(
+            select(TextDoc.id, TextDoc.page_count).where(
+                TextDoc.id.in_([text_id for text_id, _ in comptes])
+            )
+        ).all()
+    )
+    return {
+        text_id
+        for text_id, lues in comptes
+        if lues >= (pagination.get(text_id) or 1)
+    }
+
+
+def _chapitre_suivant(livre: Book, lectures: dict[int, dt.datetime]):
+    """Le chapitre a ouvrir pour reprendre ce livre, ou None.
+
+    « Reprendre » veut dire : le chapitre qui suit le dernier ou le
+    lecteur a appuye sur « j'ai lu la page ». Pas le dernier ouvert —
+    parcourir un texte sans le declarer lu ne fait pas avancer.
+
+    None quand le livre n'a pas ete commence (rien a reprendre) ou quand
+    le dernier chapitre lu est le dernier du livre (rien a suivre).
+    """
+    lus = [t for t in livre.texts if t.id in lectures]
+    if not lus:
+        return None
+    dernier = max(lus, key=lambda t: lectures[t.id])
+    apres = [
+        t
+        for t in livre.texts
+        if (t.chapter_idx, t.id) > (dernier.chapter_idx, dernier.id)
+        and t.status == "ready"
+    ]
+    return min(apres, key=lambda t: (t.chapter_idx, t.id), default=None)
+
+
+def _book_entry(
+    livre: Book, couvertures: dict, lectures: dict[int, dt.datetime] | None = None
+) -> dict:
     """Un livre, ses chapitres et sa progression.
 
     Un livre progresse comme la moyenne de ses chapitres, ponderee par
@@ -515,6 +595,7 @@ def _book_entry(livre: Book, couvertures: dict) -> dict:
         "words": mots,
         "ratio": (connus / mots) if mots else 0.0,
         "spectrum": _merge_spectrum(chapitres),
+        "resume": _chapitre_suivant(livre, lectures or {}),
     }
 
 
@@ -1894,7 +1975,9 @@ def switch_mode(
     # Une destination doit rester interne : jamais de renvoi hors du site.
     if not next_url.startswith("/") or next_url.startswith("//"):
         next_url = "/"
-    if mode == MODE_ADMIN and next_url in ("/", "/words", "/cards", "/review", "/stats"):
+    if mode == MODE_ADMIN and next_url in (
+        "/", "/bibliotheque", "/words", "/cards", "/review", "/stats"
+    ):
         next_url = "/admin"
     return redirect(next_url)
 
@@ -2595,21 +2678,111 @@ def admin_books(
     admin: User = Depends(require_admin),
 ):
     livres = session.scalars(
-        select(Book).order_by(Book.sort_order, Book.author, Book.title)
+        select(Book).order_by(Book.sort_order, Book.title)
     ).all()
     orphelins = session.scalars(
         select(TextDoc).where(TextDoc.book_id.is_(None)).order_by(TextDoc.title)
     ).all()
     return templates.TemplateResponse(
-        request, "admin_books.html", {"books": livres, "orphans": orphelins}
+        request,
+        "admin_books.html",
+        {
+            "books": livres,
+            "orphans": orphelins,
+            "authors": _authors(session),
+        },
     )
+
+
+def _authors(session: Session) -> list[Author]:
+    return list(
+        session.scalars(
+            select(Author).order_by(Author.sort_order, Author.name)
+        ).all()
+    )
+
+
+def _resolve_author(session: Session, author_id: str) -> Author | None:
+    """Traduit le choix du formulaire en auteur, ou None pour « aucun »."""
+    if not author_id.strip():
+        return None
+    auteur = session.get(Author, int(author_id))
+    if auteur is None:
+        raise HTTPException(400, "auteur inconnu")
+    return auteur
+
+
+@app.post("/admin/authors")
+def create_author(
+    name: str = Form(...),
+    era: str = Form(""),
+    session: Session = Depends(get_session),
+    admin: User = Depends(require_admin),
+):
+    nom = name.strip()
+    if not nom:
+        raise HTTPException(400, "le nom ne peut pas être vide")
+    # Le nom est unique en base : on le dit clairement plutot que de
+    # laisser remonter une erreur d'integrite.
+    if session.scalars(select(Author).where(Author.name == nom)).first():
+        raise HTTPException(400, f"« {nom} » est déjà dans la liste")
+    session.add(Author(name=nom, era=era.strip() or None))
+    session.flush()
+    return redirect("/admin/books")
+
+
+@app.post("/admin/authors/{author_id}")
+def update_author(
+    author_id: int,
+    name: str = Form(...),
+    era: str = Form(""),
+    session: Session = Depends(get_session),
+    admin: User = Depends(require_admin),
+):
+    auteur = session.get(Author, author_id)
+    if auteur is None:
+        raise HTTPException(404)
+    nom = name.strip()
+    if not nom:
+        raise HTTPException(400, "le nom ne peut pas être vide")
+    double = session.scalars(select(Author).where(Author.name == nom)).first()
+    if double is not None and double.id != auteur.id:
+        raise HTTPException(400, f"« {nom} » est déjà dans la liste")
+    auteur.name = nom
+    auteur.era = era.strip() or None
+    return redirect("/admin/books")
+
+
+@app.post("/admin/authors/{author_id}/delete")
+def delete_author(
+    author_id: int,
+    session: Session = Depends(get_session),
+    admin: User = Depends(require_admin),
+):
+    """Retire un auteur, a condition qu'aucun livre ne s'y rattache.
+
+    Refuser plutot que detacher : supprimer un auteur par megarde
+    rendrait ses livres anonymes sans qu'on s'en apercoive, et rien ne
+    permettrait de retrouver lequel etait le sien.
+    """
+    auteur = session.get(Author, author_id)
+    if auteur is None:
+        raise HTTPException(404)
+    if auteur.books:
+        raise HTTPException(
+            400,
+            f"« {auteur.name} » a encore {len(auteur.books)} livre(s) : "
+            "rattachez-les ailleurs avant de le retirer.",
+        )
+    session.delete(auteur)
+    return redirect("/admin/books")
 
 
 @app.post("/admin/books")
 def create_book(
     title: str = Form(...),
     subtitle: str = Form(""),
-    author: str = Form(""),
+    author_id: str = Form(""),
     era: str = Form(""),
     translator: str = Form(""),
     description: str = Form(""),
@@ -2619,7 +2792,7 @@ def create_book(
     livre = Book(
         title=title.strip(),
         subtitle=subtitle.strip() or None,
-        author=author.strip() or None,
+        author=_resolve_author(session, author_id),
         era=era.strip() or None,
         translator=translator.strip() or None,
         description=description.strip() or None,
@@ -2634,7 +2807,7 @@ def update_book(
     book_id: int,
     title: str = Form(...),
     subtitle: str = Form(""),
-    author: str = Form(""),
+    author_id: str = Form(""),
     era: str = Form(""),
     translator: str = Form(""),
     description: str = Form(""),
@@ -2646,10 +2819,44 @@ def update_book(
         raise HTTPException(404)
     livre.title = title.strip()
     livre.subtitle = subtitle.strip() or None
-    livre.author = author.strip() or None
+    livre.author = _resolve_author(session, author_id)
+    # Le nom en clair ne doit plus contredire le rattachement.
+    livre.author_name = None
     livre.era = era.strip() or None
     livre.translator = translator.strip() or None
     livre.description = description.strip() or None
+    return redirect("/admin/books")
+
+
+@app.post("/api/admin/texts/{text_id}/move")
+def move_chapter(
+    text_id: int,
+    direction: str = Form(...),
+    session: Session = Depends(get_session),
+    admin: User = Depends(require_admin),
+):
+    """Deplace un chapitre d'un rang dans son livre.
+
+    On renumerote la suite entiere a chaque deplacement plutot que
+    d'echanger deux numeros : les textes importes arrivent souvent tous
+    au rang 0, et un echange entre deux ex aequo n'aurait rien deplace.
+    Renumeroter remet la serie d'aplomb au premier clic.
+    """
+    doc = session.get(TextDoc, text_id)
+    if doc is None:
+        raise HTTPException(404)
+    if doc.book_id is None:
+        raise HTTPException(400, "ce texte n'appartient à aucun livre")
+    if direction not in ("up", "down"):
+        raise HTTPException(400, "direction inconnue")
+
+    fratrie = sorted(doc.book.texts, key=lambda t: (t.chapter_idx, t.id))
+    position = next(i for i, t in enumerate(fratrie) if t.id == doc.id)
+    voisin = position - 1 if direction == "up" else position + 1
+    if 0 <= voisin < len(fratrie):
+        fratrie[position], fratrie[voisin] = fratrie[voisin], fratrie[position]
+    for rang, texte in enumerate(fratrie, start=1):
+        texte.chapter_idx = rang
     return redirect("/admin/books")
 
 

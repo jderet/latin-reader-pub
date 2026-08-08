@@ -245,6 +245,22 @@ LIVRES_VIDES = [
 ]
 
 
+def _auteur(session, nom: str, epoque: str | None):
+    """L'auteur portant ce nom, cree au besoin.
+
+    Le catalogue est decrit par des noms ; la base, elle, rattache les
+    livres a une table d'auteurs. On fait la traduction ici.
+    """
+    from app.models import Author
+
+    auteur = session.scalars(select(Author).where(Author.name == nom)).first()
+    if auteur is None:
+        auteur = Author(name=nom, era=epoque)
+        session.add(auteur)
+        session.flush()
+    return auteur
+
+
 def purge() -> int:
     """Retire les livres de demonstration et leurs textes."""
     with session_scope() as session:
@@ -279,7 +295,7 @@ def seed(*, vides_seulement: bool = False) -> dict:
             livre = Book(
                 title=fiche["title"],
                 subtitle=fiche.get("subtitle"),
-                author=fiche["author"],
+                author=_auteur(session, fiche["author"], fiche.get("era")),
                 era=fiche.get("era"),
                 translator=fiche.get("translator"),
                 description=fiche.get("description"),

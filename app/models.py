@@ -182,6 +182,31 @@ class FormLemma(Base):
 # --------------------------------------------------------------------------
 # Livres et textes
 # --------------------------------------------------------------------------
+class Author(Base):
+    """Un auteur du catalogue.
+
+    L'auteur etait une chaine libre saisie livre par livre, ce qui
+    produisait des doublons — « Ciceron », « Cicéron », « M. T. Cicero »
+    faisaient trois rayons pour un seul homme. Il est desormais choisi
+    dans une liste que l'administrateur tient.
+
+    L'epoque vit ici plutot que sur le livre : elle est la meme pour
+    toute l'oeuvre d'un auteur.
+    """
+
+    __tablename__ = "author"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(160), unique=True, index=True)
+    era: Mapped[str | None] = mapped_column(String(64), default=None)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[dt.datetime] = mapped_column(UtcDateTime, default=utcnow)
+
+    books: Mapped[list["Book"]] = relationship(
+        back_populates="author", order_by="Book.sort_order, Book.title"
+    )
+
+
 class Book(Base):
     """Un recueil ordonne de textes.
 
@@ -195,7 +220,17 @@ class Book(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     title: Mapped[str] = mapped_column(String(240))
     subtitle: Mapped[str | None] = mapped_column(String(240), default=None)
-    author: Mapped[str | None] = mapped_column(String(160), default=None, index=True)
+    # `author_name` porte l'ancienne colonne texte. Elle n'est plus
+    # ecrite : elle sert de source au report vers la table `author`
+    # (cf. db.backfill_authors) et de filet pour un livre importe avant
+    # ce report.
+    author_name: Mapped[str | None] = mapped_column(
+        "author", String(160), default=None, index=True
+    )
+    author_id: Mapped[int | None] = mapped_column(
+        ForeignKey("author.id"), default=None, index=True
+    )
+    author: Mapped["Author | None"] = relationship(back_populates="books")
     era: Mapped[str | None] = mapped_column(String(64), default=None)
     translator: Mapped[str | None] = mapped_column(String(160), default=None)
     description: Mapped[str | None] = mapped_column(Text, default=None)
@@ -210,7 +245,14 @@ class Book(Base):
 
     @property
     def display_author(self) -> str:
-        return self.author or "Anonyme"
+        if self.author is not None:
+            return self.author.name
+        return self.author_name or "Anonyme"
+
+    @property
+    def display_era(self) -> str | None:
+        """L'epoque du livre, a defaut celle de son auteur."""
+        return self.era or (self.author.era if self.author else None)
 
 
 # --------------------------------------------------------------------------

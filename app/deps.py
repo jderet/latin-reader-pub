@@ -35,9 +35,15 @@ MODE_USER = "user"
 def current_mode(request: Request) -> str:
     """Mode actif de l'administrateur : gestion ou lecture.
 
+    La lecture est le mode par defaut, y compris pour l'administrateur :
+    on ouvre l'application pour lire, et la gestion est une incursion
+    qu'on decide. Elle reste a un clic (Ctrl + M, ou la pastille de la
+    barre), et `require_admin` ignore le mode : basculer en lecture ne
+    fait jamais perdre ses droits.
+
     Sans effet pour un lecteur ordinaire, qui n'a qu'un mode.
     """
-    return request.session.get(MODE_KEY, MODE_ADMIN)
+    return request.session.get(MODE_KEY, MODE_USER)
 
 
 class RedirectToLogin(HTTPException):

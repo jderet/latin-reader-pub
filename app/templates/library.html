@@ -73,7 +73,7 @@
               </h3>
               {% if e.book.subtitle %}<p class="book-sub">{{ e.book.subtitle }}</p>{% endif %}
               <p class="book-meta">
-                {% if e.book.era %}<span>{{ e.book.era }}</span>{% endif %}
+                {% if e.book.display_era %}<span>{{ e.book.display_era }}</span>{% endif %}
                 <span>{{ e.chapters|length }} chapitre(s)</span>
                 {% if e.book.translator %}<span>trad. {{ e.book.translator }}</span>{% endif %}
               </p>
@@ -82,7 +82,7 @@
             {# Jauge et chapitres passent sous l'illustration, sur toute la
                largeur : cotes a la couverture ils n'avaient qu'une colonne
                etroite, ou les intitules de chapitre se cassaient en trois. #}
-            {% if e.spectrum or e.chapters %}
+            {% if e.spectrum or e.chapters or e.resume %}
             <div class="book-foot">
               {% if e.spectrum %}
                 <div class="gauge" role="img"
@@ -99,15 +99,14 @@
                 </p>
               {% endif %}
 
-              {# Un rayon encore vide n'a pas de liste : sans cette garde, un
-                 <ol> sans article laissait sa marge sous la carte. #}
+              {# Les chapitres se lisent ici mais ne s'ouvrent plus d'un
+                 clic : la carte entière mène au livre, c'est là qu'on
+                 choisit son chapitre. #}
               {% if e.chapters %}
                 <ol class="chapter-links">
                   {% for c in e.chapters %}
                     <li>
-                      <a href="/texts/{{ c.doc.id }}">
-                        {{ c.doc.chapter_label or c.doc.title }}
-                      </a>
+                      <span>{{ c.doc.chapter_label or c.doc.title }}</span>
                       {% if c.coverage %}
                         <span class="muted small">
                           {{ (c.coverage.known_ratio * 100)|round }} %
@@ -116,6 +115,17 @@
                     </li>
                   {% endfor %}
                 </ol>
+              {% endif %}
+
+              {% if e.resume %}
+                {# Seule exception à la surimpression de la carte : ce
+                   bouton mène ailleurs qu'à la page du livre. #}
+                <p class="book-reprise">
+                  <a class="cta-reprise" href="/texts/{{ e.resume.id }}">
+                    Reprendre la lecture
+                    <span class="muted small">{{ e.resume.chapter_label or e.resume.title }}</span>
+                  </a>
+                </p>
               {% endif %}
             </div>
             {% endif %}
@@ -130,8 +140,12 @@
       <h2>Textes isolés</h2>
       <ul class="texts">
         {% for row in loose %}
-          <li>
+          <li class="{{ 'lu' if row.doc.id in lus }}">
             <div class="text-head">
+              {% if row.doc.id in lus %}
+                <span class="marque-lue" role="img" aria-label="Texte lu"
+                      title="Vous avez lu ce texte">✓</span>
+              {% endif %}
               <a class="text-title" href="/texts/{{ row.doc.id }}">{{ row.doc.title }}</a>
               {% if row.doc.author %}<span class="muted">{{ row.doc.author }}</span>{% endif %}
               {% if row.doc.source_kind == "youtube" %}<span class="badge">vidéo</span>{% endif %}
