@@ -169,6 +169,7 @@ async def _attach_user(request: Request, call_next):
     donc l'utilisateur sur `request.state`, lu par la barre de navigation.
     """
     request.state.user = None
+    request.state.due = 0
     # La lecture est le mode par defaut, administrateur compris.
     request.state.mode = MODE_USER
     try:
@@ -182,7 +183,21 @@ async def _attach_user(request: Request, call_next):
             if account is not None:
                 session.expunge(account)
                 request.state.user = account
+                # Le compte des fiches echues n'a de sens que pour une
+                # page : inutile de le calculer pour une image ou un
+                # appel d'API, qui n'affichent aucune barre.
+                if _porte_une_barre(request.url.path):
+                    request.state.due = cards_svc.due_count(session, account.id)
     return await call_next(request)
+
+
+# Prefixes qui ne rendent jamais de gabarit : ni barre de navigation, ni
+# pastille a calculer.
+_SANS_BARRE = ("/static/", "/media/", "/audio/", "/api/", "/sw.js")
+
+
+def _porte_une_barre(chemin: str) -> bool:
+    return not chemin.startswith(_SANS_BARRE)
 
 
 # Session signée dans un cookie.

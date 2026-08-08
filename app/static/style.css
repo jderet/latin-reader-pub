@@ -903,6 +903,19 @@ button[type=submit]:hover, .validate:hover, .listen:hover {
 .cta-reprise:hover { background: var(--accent-soft); }
 .cta-reprise .muted { font-weight: 400; }
 
+/* ---------- pastille des fiches dues ---------- */
+/* Elle n'est rendue que s'il y a des fiches : pas de regle pour le zero,
+   le gabarit s'en charge. Chiffres tabulaires pour que la largeur ne
+   saute pas entre 8 et 11. */
+.pastille-dues {
+  display: inline-block; margin-left: .35rem;
+  min-width: 1.15rem; padding: 0 .3rem;
+  border-radius: 99px; background: var(--danger); color: #fff;
+  font-size: .7rem; font-weight: 700; line-height: 1.35;
+  text-align: center; font-variant-numeric: tabular-nums;
+  vertical-align: text-top;
+}
+
 /* ---------- texte lu ---------- */
 /* Un texte dont toutes les pages ont ete declarees lues. La teinte est
    melangee au fond plutot que posee en dur : elle suit ainsi le theme

@@ -38,7 +38,9 @@
       {# La barre garde les deux gestes de la lecture ; le reste — mots,
          statistiques, réglages — est passé dans le tiroir du compte. #}
       <a href="/bibliotheque">Bibliothèque</a>
-      <a href="/review">Réviser</a>
+      <a href="/review">Réviser{% if request.state.due %}<span
+          class="pastille-dues" aria-label="{{ request.state.due }} fiche(s) à réviser"
+        >{{ request.state.due }}</span>{% endif %}</a>
     {% endif %}
   </nav>
   {% if est_admin %}
